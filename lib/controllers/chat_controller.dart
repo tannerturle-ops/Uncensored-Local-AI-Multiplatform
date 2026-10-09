@@ -6,11 +6,18 @@ import '../models/message_model.dart';
 import '../services/llm_service.dart';
 import '../services/deepseek_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/image_task_service.dart';
+import '../services/image_provider.dart';
+import '../services/message_intent_router.dart';
 
 class ChatController extends GetxController {
   final LlmService _llm = Get.find<LlmService>();
   final DeepSeekService _deepseek = DeepSeekService();
   final ChatStorageService _storage = Get.find<ChatStorageService>();
+  final ImageTaskService _imageTasks = ImageTaskService();
+  final MessageIntentRouter _intentRouter = const MessageIntentRouter();
+
+  void configureImageProvider(ImageProvider provider) => _imageTasks.configure(provider);
 
   final chats = <ChatModel>[].obs;
   final activeChatId = RxnString();
@@ -92,6 +99,49 @@ class ChatController extends GetxController {
 
     _storage.saveChat(chat);
     chats.refresh();
+
+    // Image requests stay in this exact conversation, even if they route to
+    // another provider. Never synthesize an edit without the source image.
+    final imageSource = chat.messages.reversed.firstWhereOrNull(
+      (m) => m.imageLocalPath != null || m.imageBase64 != null,
+    );
+    final imageIntent = _intentRouter.classify(
+      text,
+      hasRecentImage: imageSource != null,
+    );
+    if (imageIntent == MochiIntent.generateImage ||
+        imageIntent == MochiIntent.editImage) {
+      isGenerating.value = true;
+      final requestSerial = ++_generationSerial;
+      try {
+        final MessageModel imageReply;
+        if (imageIntent == MochiIntent.editImage) {
+          if (imageSource == null) {
+            throw StateError('Attach or generate an image before editing it.');
+          }
+          imageReply = await _imageTasks.edit(prompt: text, source: imageSource);
+        } else {
+          imageReply = await _imageTasks.create(text);
+        }
+        if (requestSerial == _generationSerial) {
+          chat.messages.add(imageReply);
+        }
+      } catch (error) {
+        if (requestSerial == _generationSerial) {
+          chat.messages.add(MessageModel(
+            role: MessageRole.assistant,
+            content: '⚠ Image request: $error',
+          ));
+        }
+      } finally {
+        if (requestSerial == _generationSerial) {
+          isGenerating.value = false;
+        }
+        await _storage.saveChat(chat);
+        chats.refresh();
+      }
+      return;
+    }
 
     // Build message history for LLM
     final history = chat.messages
