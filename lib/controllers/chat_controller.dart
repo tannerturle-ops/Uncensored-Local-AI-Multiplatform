@@ -102,9 +102,14 @@ class ChatController extends GetxController {
 
     // Image requests stay in this exact conversation, even if they route to
     // another provider. Never synthesize an edit without the source image.
-    final imageSource = chat.messages.reversed.firstWhereOrNull(
-      (m) => m.imageLocalPath != null || m.imageBase64 != null,
-    );
+    MessageModel? imageSource;
+    for (final candidate in chat.messages.reversed) {
+      if (candidate.imageLocalPath != null ||
+          candidate.imageBase64 != null) {
+        imageSource = candidate;
+        break;
+      }
+    }
     final imageIntent = _intentRouter.classify(
       text,
       hasRecentImage: imageSource != null,
