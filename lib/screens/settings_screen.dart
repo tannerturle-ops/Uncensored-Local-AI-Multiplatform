@@ -174,44 +174,6 @@ class _SettingsBody extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _SystemPromptEditor(chatCtrl: chatCtrl),
-              /* Previous inline editor replaced with a persistent controller.
-              Obx(
-                () => TextField(
-                  controller:
-                      TextEditingController(text: chatCtrl.systemPrompt.value)
-                        ..selection = TextSelection.fromPosition(
-                          TextPosition(
-                            offset: chatCtrl.systemPrompt.value.length,
-                          ),
-                        ),
-                  maxLines: 4,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: context.text,
-                    height: 1.5,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'e.g. You are a helpful assistant...',
-                    hintStyle: TextStyle(color: context.textD),
-                    filled: true,
-                    fillColor: context.bgInput,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: context.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: context.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.accent),
-                    ),
-                  ),
-                  onChanged: (v) => chatCtrl.setGlobalSystemPrompt(v),
-                ),
-              ),
-              */
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
