@@ -1029,6 +1029,7 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
   final _field = TextEditingController();
   bool _hasKey = false;
   bool _saving = false;
+  bool _testing = false;
 
   @override
   void initState() {
@@ -1060,6 +1061,7 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
             const SizedBox(height: 10),
             TextField(
               controller: _field,
+              onChanged: (_) => setState(() {}),
               obscureText: true,
               enableSuggestions: false,
               autocorrect: false,
@@ -1075,12 +1077,15 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
             Row(
               children: [
                 TextButton(
-                  onPressed: _saving ? null : () async {
+                  onPressed: _saving || _testing || _field.text.trim().isEmpty ? null : () async {
                     setState(() => _saving = true);
                     try {
                       await _service.saveKey(_field.text);
                       _field.clear();
                       await _refresh();
+                      Get.snackbar('Saved', 'DeepSeek key saved securely on this device.', snackPosition: SnackPosition.BOTTOM);
+                    } catch (_) {
+                      Get.snackbar('Save failed', 'Could not store the API key.', snackPosition: SnackPosition.BOTTOM);
                     } finally {
                       if (mounted) setState(() => _saving = false);
                     }
@@ -1088,11 +1093,29 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
                   child: const Text('Save key'),
                 ),
                 TextButton(
-                  onPressed: !_hasKey || _saving ? null : () async {
+                  onPressed: !_hasKey || _saving || _testing ? null : () async {
                     await _service.clearKey();
                     await _refresh();
                   },
                   child: const Text('Remove key'),
+                ),
+                TextButton.icon(
+                  onPressed: !_hasKey || _saving || _testing ? null : () async {
+                    setState(() => _testing = true);
+                    try {
+                      await _service.complete(
+                        model: DeepSeekService.chatModel,
+                        messages: [{'role': 'user', 'content': 'Reply with OK.'}],
+                      );
+                      Get.snackbar('Connected', 'DeepSeek API is responding.', snackPosition: SnackPosition.BOTTOM);
+                    } catch (_) {
+                      Get.snackbar('Connection failed', 'Check network, API key, or DeepSeek account access.', snackPosition: SnackPosition.BOTTOM);
+                    } finally {
+                      if (mounted) setState(() => _testing = false);
+                    }
+                  },
+                  icon: _testing ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering_rounded, size: 16),
+                  label: const Text('Test connection'),
                 ),
               ],
             ),
