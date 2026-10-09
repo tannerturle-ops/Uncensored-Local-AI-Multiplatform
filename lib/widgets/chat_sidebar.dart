@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import '../theme/app_colors.dart';
 import '../controllers/chat_controller.dart';
 
-class ChatSidebar extends StatelessWidget {
+class ChatSidebar extends StatefulWidget {
   final VoidCallback onNewChat;
   final ValueChanged<String> onSelectChat;
   final ValueChanged<String> onDeleteChat;
@@ -19,19 +19,31 @@ class ChatSidebar extends StatelessWidget {
   });
 
   @override
+  State<ChatSidebar> createState() => _ChatSidebarState();
+}
+
+class _ChatSidebarState extends State<ChatSidebar> {
+  final _search = TextEditingController();
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final ctrl = Get.find<ChatController>();
 
     return Column(
       children: [
         // New chat button
-        if (showNewChatButton)
+        if (widget.showNewChatButton)
           Padding(
             padding: const EdgeInsets.all(12),
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: onNewChat,
+                onPressed: widget.onNewChat,
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text(
                   'New Chat',
@@ -52,10 +64,32 @@ class ChatSidebar extends StatelessWidget {
             ),
           ),
 
+        // Search saved conversations by title or message content.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+          child: TextField(
+            controller: _search,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search_rounded, size: 19),
+              hintText: 'Search conversations',
+              isDense: true,
+              suffixIcon: _search.text.isEmpty ? null : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 16),
+                onPressed: () => setState(() => _search.clear()),
+              ),
+            ),
+          ),
+        ),
         // Chat list
         Expanded(
           child: Obx(() {
-            final chats = ctrl.chats;
+            final query = _search.text.trim().toLowerCase();
+            final chats = ctrl.chats.where((chat) => query.isEmpty ||
+              chat.title.toLowerCase().contains(query) ||
+              chat.messages.any((m) => m.content.toLowerCase().contains(query)))
+              .toList()
+              ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
             if (chats.isEmpty) {
               return Center(
                 child: Column(
@@ -64,7 +98,7 @@ class ChatSidebar extends StatelessWidget {
                     Icon(Icons.chat_bubble_outline, size: 36, color: context.textD),
                     const SizedBox(height: 12),
                     Text(
-                      'No chats yet',
+                      query.isEmpty ? 'No chats yet' : 'No matching conversations',
                       style: TextStyle(fontSize: 13, color: context.textD),
                     ),
                   ],
@@ -85,7 +119,7 @@ class ChatSidebar extends StatelessWidget {
                     color: isActive ? context.bgHover : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     child: InkWell(
-                      onTap: () => onSelectChat(chat.id),
+                      onTap: () => widget.onSelectChat(chat.id),
                       borderRadius: BorderRadius.circular(8),
                       hoverColor: context.bgHover,
                       child: Padding(
@@ -211,7 +245,7 @@ class ChatSidebar extends StatelessWidget {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(ctx);
-              onDeleteChat(chatId);
+              widget.onDeleteChat(chatId);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.red,
