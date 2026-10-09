@@ -9,6 +9,8 @@ import '../services/chat_storage_service.dart';
 import '../services/image_task_service.dart';
 import '../services/image_provider.dart';
 import '../services/message_intent_router.dart';
+import '../services/wiro_auth_service.dart';
+import '../services/wiro_image_provider.dart';
 
 class ChatController extends GetxController {
   final LlmService _llm = Get.find<LlmService>();
@@ -119,6 +121,11 @@ class ChatController extends GetxController {
       isGenerating.value = true;
       final requestSerial = ++_generationSerial;
       try {
+        // Automatically register Wiro when valid credentials are present.
+        // No separate provider selector is required for the first integration.
+        if (await WiroAuthService().hasCredentials()) {
+          _imageTasks.configure(WiroImageProvider());
+        }
         final MessageModel imageReply;
         if (imageIntent == MochiIntent.editImage) {
           if (imageSource == null) {
