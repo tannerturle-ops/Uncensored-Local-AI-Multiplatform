@@ -50,32 +50,29 @@ class WiroAuthService {
     };
   }
 
-  /// A read-only signed call: does not create a billable image task.
+  /// Read-only model metadata request: never starts a billable task.
   Future<void> testConnection() async {
     final response = await http.post(
-      Uri.parse('https://api.wiro.ai/v1/Task/Detail'),
+      Uri.parse('https://api.wiro.ai/v1/Tool/Detail'),
       headers: {
         ...await signedHeaders(),
         'Content-Type': 'application/json',
       },
-      body: jsonEncode({'taskid': '0'}),
-    ).timeout(const Duration(seconds: 20));
-    // Task 0 usually does not exist. It is still proof the credentials were
-    // accepted if the API returns a non-auth failure. Treat 401/403 as failure.
+      body: jsonEncode({
+        'slugowner': 'bytedance',
+        'slugproject': 'seedream-v5-lite-uncensored',
+      }),
+    ).timeout(const Duration(seconds: 25));
     if (response.statusCode == 401 || response.statusCode == 403) {
       throw StateError('Wiro rejected the project credentials (HTTP ${response.statusCode}).');
     }
-    if (response.statusCode >= 500) {
-      throw StateError('Wiro is unavailable (HTTP ${response.statusCode}).');
-    }
     if (response.statusCode != 200) {
-      throw StateError('Wiro verification returned HTTP ${response.statusCode}.');
+      throw StateError('Wiro returned HTTP ${response.statusCode}.');
     }
     final decoded = jsonDecode(response.body);
-    if (decoded is Map && decoded['result'] == false) {
-      // Wiro can return result:false even for invalid task IDs. This is not
-      // guaranteed to distinguish account auth from a missing task.
-      throw StateError('Wiro responded, but credentials could not be verified without a valid task.');
+    if (decoded is! Map || decoded['result'] != true) {
+      throw StateError('Wiro could not verify model access: ${decoded is Map ? decoded['errors'] : 'invalid response'}');
     }
   }
+
 }
