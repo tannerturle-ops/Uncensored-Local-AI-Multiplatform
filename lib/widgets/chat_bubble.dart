@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import '../theme/app_colors.dart';
 import '../models/message_model.dart';
 import '../services/llm_service.dart';
+import 'message_image.dart';
 
 /// A single, consistent message layout for local and cloud responses.
 /// Thinking is displayed by the chat list, outside any message bubble.
@@ -90,7 +91,18 @@ class ChatBubble extends StatelessWidget {
                             : AppColors.accent.withOpacity(0.08),
                       ),
                     ),
-                    child: isUser
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (message.imageLocalPath != null ||
+                            message.imageBase64 != null) ...[
+                          MessageImage(message: message),
+                          if (message.content.isNotEmpty)
+                            const SizedBox(height: 10),
+                        ],
+                        if (message.content.isNotEmpty)
+                          isUser
                         ? SelectableText(
                             message.content,
                             style: TextStyle(
@@ -152,8 +164,11 @@ class ChatBubble extends StatelessWidget {
                               tableCellsPadding: const EdgeInsets.all(8),
                             ),
                           ),
+                      ],
+                    ),
                   ),
-                  if (message.content.isNotEmpty)
+                  if (message.content.isNotEmpty || message.imageLocalPath != null ||
+                      message.imageBase64 != null)
                     Padding(
                       padding: const EdgeInsets.only(left: 3, top: 5),
                       child: Row(
