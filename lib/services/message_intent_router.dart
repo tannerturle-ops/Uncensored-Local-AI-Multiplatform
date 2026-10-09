@@ -16,7 +16,7 @@ class MessageIntentRouter {
       r'\b(edit|modify|remove|replace|recolor|retouch|enhance|upscale|inpaint|crop|change|make)\b',
     ).hasMatch(text);
     final mentionsExisting = RegExp(
-      r'\b(this|that|the|my|uploaded|attached|previous|last|same|it|image|picture|photo|screenshot)\b',
+      r'\b(this|that|the|my|uploaded|attached|previous|last|same|it|him|her|them|his|their|she|he|image|picture|photo|screenshot)\b',
     ).hasMatch(text);
 
     if (hasAttachedImage) {
@@ -46,6 +46,11 @@ class MessageIntentRouter {
       r'\b(draw|illustrate|paint|sketch)\b|\b(generate|render|design)\b.*\b(image|picture|photo|artwork|illustration|drawing|portrait|scene)\b',
     ).hasMatch(text) &&
         !RegExp(r'\b(don\x27t|do not|without)\s+(?:generate|draw|illustrate|paint|render|design|sketch)\b').hasMatch(text)) {
+      return MochiIntent.generateImage;
+    }
+
+    if (RegExp(r'\\b(generate|draw|illustrate|paint|render|sketch)\\b').hasMatch(text) &&
+        !RegExp(r'\\b(summary|report|text|code|list|story|answer)\\b').hasMatch(text)) {
       return MochiIntent.generateImage;
     }
 
