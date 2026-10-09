@@ -648,7 +648,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? const Icon(Icons.check_rounded, color: AppColors.green)
                   : null,
                 onTap: () {
-                  _modelCtrl.selectedModelFilename.value = id;
+                  _modelCtrl.selectCloudModel(id);
                   Navigator.pop(context);
                 },
               )),
