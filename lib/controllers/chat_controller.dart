@@ -157,6 +157,9 @@ class ChatController extends GetxController {
       );
       await finished.future;
       aiMsg.content = buffer.toString();
+      if (aiMsg.content.trim().isEmpty && serial == _generationSerial) {
+        aiMsg.content = 'No response was returned. Please try again.';
+      }
     } catch (e) {
       if (aiMsg.content.isEmpty) {
         aiMsg.content = '⚠ Error: ${e.toString()}';
@@ -177,6 +180,9 @@ class ChatController extends GetxController {
       if (serial == _generationSerial) {
         _genSub = null;
         _generationDone = null;
+      }
+      if (aiMsg.content.trim().isEmpty) {
+        chat.messages.remove(aiMsg);
       }
       chat.updatedAt = DateTime.now();
       _storage.saveChat(chat);
