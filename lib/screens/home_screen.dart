@@ -9,7 +9,6 @@ import '../controllers/theme_controller.dart';
 import '../services/llm_service.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_bubble.dart';
-import '../widgets/typing_indicator.dart';
 import 'model_library_screen.dart';
 import 'settings_screen.dart';
 
@@ -30,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _sidebarOpen = true;
   bool _autoScrollToBottom = true;
   String? _lastRenderedChatId;
+  Worker? _chatRefreshWorker;
 
   // Mobile bottom nav index: 0=Chat, 1=Models, 2=Settings
   int _mobileTabIndex = 0;
@@ -42,10 +42,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleChatScroll);
+    _chatRefreshWorker = ever(_chatCtrl.chats, (_) => _scrollToBottom());
   }
 
   @override
   void dispose() {
+    _chatRefreshWorker?.dispose();
     _scrollController.removeListener(_handleChatScroll);
     _scrollController.dispose();
     _msgController.dispose();
@@ -69,11 +71,13 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         if (!force && !_autoScrollToBottom) return;
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
+        final bottom = _scrollController.position.maxScrollExtent;
+        if ((bottom - _scrollController.offset).abs() < 12) return;
+        if (force) {
+          _scrollController.jumpTo(bottom);
+        } else {
+          _scrollController.jumpTo(bottom);
+        }
       }
     });
   }
@@ -970,13 +974,10 @@ class _HomeScreenState extends State<HomeScreen> {
               _scrollToBottom(force: true);
             }
 
-            _scrollToBottom();
-
             return ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              itemCount:
-                  chat.messages.length + (_chatCtrl.isGenerating.value ? 1 : 0),
+              itemCount: chat.messages.length,
               itemBuilder: (context, index) {
                 if (index < chat.messages.length) {
                   final msg = chat.messages[index];
