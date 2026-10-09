@@ -22,6 +22,7 @@ dependencies:
 
   # ── Networking / Downloads ──────────────────────────────────────
   flutter_secure_storage: ^9.2.4
+  crypto: ^3.0.6                    # Wiro HMAC request signatures
   http: ^1.2.2                     # HTTP requests + model downloading
 
   # ── File System ─────────────────────────────────────────────────
