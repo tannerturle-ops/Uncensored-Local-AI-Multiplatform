@@ -20,6 +20,7 @@ class ChatController extends GetxController {
   final systemPrompt = ''.obs;
 
   StreamSubscription<String>? _genSub;
+  int _generationSerial = 0;
 
   @override
   void onInit() {
@@ -73,7 +74,7 @@ class ChatController extends GetxController {
 
   /// Send a user message and stream AI response.
   Future<void> sendMessage(String text, {String? modelFilename}) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || isGenerating.value) return;
     final chat = activeChat;
     if (chat == null) return;
 
@@ -98,6 +99,7 @@ class ChatController extends GetxController {
         .toList();
 
     // Start generation
+    final serial = ++_generationSerial;
     isGenerating.value = true;
     streamedResponse.value = '';
 
@@ -112,12 +114,12 @@ class ChatController extends GetxController {
       final cloudId = modelFilename ?? '';
       final Stream<String> stream;
       if (DeepSeekService.isCloud(cloudId)) {
-        stream = Stream.fromFuture(_deepseek.complete(
+        stream = _deepseek.streamCompletion(
           model: DeepSeekService.modelFromId(cloudId),
           messages: history,
           systemPrompt: prompt,
           temperature: temperature.value,
-        ));
+        );
       } else {
         stream = _llm.generate(
           messages: history,
@@ -126,12 +128,30 @@ class ChatController extends GetxController {
         );
       }
 
-      await for (final token in stream) {
-        streamedResponse.value += token;
-        aiMsg.content = streamedResponse.value;
-        // Throttle UI refreshes
-        chats.refresh();
-      }
+      final finished = Completer<void>();
+      final buffer = StringBuffer();
+      var lastRefresh = DateTime.now();
+      _genSub = stream.listen(
+        (token) {
+          if (serial != _generationSerial) return;
+          buffer.write(token);
+          aiMsg.content = buffer.toString();
+          streamedResponse.value = aiMsg.content;
+          if (DateTime.now().difference(lastRefresh).inMilliseconds >= 70) {
+            chats.refresh();
+            lastRefresh = DateTime.now();
+          }
+        },
+        onError: (Object error) {
+          if (!finished.isCompleted) finished.completeError(error);
+        },
+        onDone: () {
+          if (!finished.isCompleted) finished.complete();
+        },
+        cancelOnError: true,
+      );
+      await finished.future;
+      aiMsg.content = buffer.toString();
     } catch (e) {
       if (aiMsg.content.isEmpty) {
         aiMsg.content = '⚠ Error: ${e.toString()}';
@@ -145,8 +165,11 @@ class ChatController extends GetxController {
             r'|<\|pad\|>|</s>|<s>|\[INST\]|\[/INST\]|\[end\]'
           ), '')
           .trim();
-      isGenerating.value = false;
-      streamedResponse.value = '';
+      if (serial == _generationSerial) {
+        isGenerating.value = false;
+        streamedResponse.value = '';
+      }
+      _genSub = null;
       chat.updatedAt = DateTime.now();
       _storage.saveChat(chat);
       chats.refresh();
@@ -155,8 +178,12 @@ class ChatController extends GetxController {
 
   /// Stop current generation.
   void stopGeneration() {
+    ++_generationSerial;
+    _genSub?.cancel();
+    _genSub = null;
     _llm.stopGeneration();
     isGenerating.value = false;
+    streamedResponse.value = '';
   }
 
   /// Update the system prompt for the active chat.
