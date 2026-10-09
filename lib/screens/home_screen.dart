@@ -91,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     _msgController.clear();
+    FocusManager.instance.primaryFocus?.unfocus();
     _autoScrollToBottom = true;
     _chatCtrl.sendMessage(
       text,
@@ -976,6 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return ListView.builder(
               controller: _scrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.symmetric(vertical: 16),
               itemCount: chat.messages.length,
               itemBuilder: (context, index) {
@@ -986,13 +988,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       msg.isAssistant && index == chat.messages.length - 1;
                   return ChatBubble(message: msg, showSpeed: isLastAi);
                 }
-                return const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: TypingIndicator(),
-                  ),
-                );
               },
             );
           }),
@@ -1088,9 +1083,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   contentPadding: const EdgeInsets.fromLTRB(24, 14, 8, 14),
                 ),
                 onSubmitted: (_) => _send(),
+                onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               ),
             ),
 
+            // iOS keyboard can be dismissed without sending or deleting draft text.
+            if (MediaQuery.viewInsetsOf(context).bottom > 0)
+              IconButton(
+                icon: Icon(Icons.keyboard_hide_rounded, color: context.textM),
+                tooltip: 'Hide keyboard',
+                onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+              ),
             // Send / Stop
             Padding(
               padding: const EdgeInsets.only(right: 8, bottom: 6),
