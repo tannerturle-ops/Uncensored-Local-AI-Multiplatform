@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../theme/app_colors.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/model_controller.dart';
+import '../services/deepseek_service.dart';
 import '../controllers/theme_controller.dart';
 import '../services/llm_service.dart';
 import '../widgets/chat_sidebar.dart';
@@ -497,12 +498,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 final info = fname != null
                     ? _modelCtrl.getModelInfo(fname)
                     : null;
-                final loaded = _llm.isLoaded.value;
+                final loaded = DeepSeekService.isCloud(fname) || _llm.isLoaded.value;
                 final isLoading = _llm.isLoadingModel.value;
                 final label = isLoading
                     ? 'Loading...'
                     : loaded
-                    ? (info?.name ?? fname ?? 'Model')
+                    ? (DeepSeekService.isCloud(fname) ? 'DeepSeek: ${DeepSeekService.modelFromId(fname!)}' : (info?.name ?? fname ?? 'Model'))
                     : 'No model selected';
 
                 return GestureDetector(
@@ -564,12 +565,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showModelPicker(BuildContext context) {
     final downloaded = _modelCtrl.downloadedModels;
-    if (downloaded.isEmpty) {
-      // No models — nudge user to Models tab
-      setState(() => _mobileTabIndex = 1);
-      return;
-    }
-
     showModalBottomSheet(
       context: context,
       backgroundColor: context.bg,
@@ -643,6 +638,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 4),
+              // Cloud models; local models still appear below.
+              ...[DeepSeekService.chatId, DeepSeekService.reasonerId].map((id) => ListTile(
+                dense: true,
+                leading: const Icon(Icons.cloud_outlined, color: AppColors.accent),
+                title: Text('DeepSeek: ${DeepSeekService.modelFromId(id)}',
+                  style: TextStyle(color: context.text)),
+                trailing: _modelCtrl.selectedModelFilename.value == id
+                  ? const Icon(Icons.check_rounded, color: AppColors.green)
+                  : null,
+                onTap: () {
+                  _modelCtrl.selectedModelFilename.value = id;
+                  Navigator.pop(context);
+                },
+              )),
               // Model list
               ...downloaded.map((filename) {
                 final info = _modelCtrl.getModelInfo(filename);
@@ -824,7 +833,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      info?.name ?? (fname ?? 'Select Model'),
+                      DeepSeekService.isCloud(fname) ? 'DeepSeek: ${DeepSeekService.modelFromId(fname!)}' : (info?.name ?? (fname ?? 'Select Model')),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
