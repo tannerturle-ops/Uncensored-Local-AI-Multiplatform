@@ -4,10 +4,12 @@ import 'package:get/get.dart';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
 import '../services/llm_service.dart';
+import '../services/deepseek_service.dart';
 import '../services/chat_storage_service.dart';
 
 class ChatController extends GetxController {
   final LlmService _llm = Get.find<LlmService>();
+  final DeepSeekService _deepseek = DeepSeekService();
   final ChatStorageService _storage = Get.find<ChatStorageService>();
 
   final chats = <ChatModel>[].obs;
@@ -104,13 +106,25 @@ class ChatController extends GetxController {
     chats.refresh();
 
     try {
-      final stream = _llm.generate(
-        messages: history,
-        systemPrompt: chat.systemPrompt.isNotEmpty
-            ? chat.systemPrompt
-            : systemPrompt.value,
-        temperature: temperature.value,
-      );
+      final prompt = chat.systemPrompt.isNotEmpty
+          ? chat.systemPrompt
+          : systemPrompt.value;
+      final cloudId = modelFilename ?? '';
+      final Stream<String> stream;
+      if (DeepSeekService.isCloud(cloudId)) {
+        stream = Stream.fromFuture(_deepseek.complete(
+          model: DeepSeekService.modelFromId(cloudId),
+          messages: history,
+          systemPrompt: prompt,
+          temperature: temperature.value,
+        ));
+      } else {
+        stream = _llm.generate(
+          messages: history,
+          systemPrompt: prompt,
+          temperature: temperature.value,
+        );
+      }
 
       await for (final token in stream) {
         streamedResponse.value += token;
