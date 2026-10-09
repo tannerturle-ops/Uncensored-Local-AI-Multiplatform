@@ -20,32 +20,42 @@ class ChatBubble extends StatelessWidget {
     final isSmall = MediaQuery.of(context).size.width < 600;
     final hPad = isSmall ? 16.0 : 24.0;
 
-    return Container(
-      width: double.infinity,
-      color: isUser ? Colors.transparent : context.bgMsgAi,
-      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 16),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 7),
       child: Row(
+        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: isUser ? context.textM : AppColors.accent,
-              borderRadius: BorderRadius.circular(8),
+          if (!isUser) ...[
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.auto_awesome_rounded,
+                size: 16, color: AppColors.accent),
             ),
-            child: Icon(
-              isUser ? Icons.person_rounded : Icons.bolt_rounded,
-              size: 16,
-              color: Colors.white,
+            const SizedBox(width: 10),
+          ],
+          Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: isSmall ? MediaQuery.of(context).size.width * 0.80 : 760,
+              ),
+              padding: EdgeInsets.symmetric(
+                horizontal: isUser ? 15 : 8,
+                vertical: isUser ? 11 : 6,
+              ),
+              decoration: BoxDecoration(
+                color: isUser
+                    ? AppColors.accent.withOpacity(context.isDark ? 0.22 : 0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: _buildContent(context, isUser),
             ),
-          ),
-          const SizedBox(width: 14),
-
-          // Content
-          Expanded(
-            child: _buildContent(context, isUser),
           ),
         ],
       ),
