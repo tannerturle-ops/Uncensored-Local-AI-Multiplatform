@@ -1103,10 +1103,10 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
                   onPressed: !_hasKey || _saving || _testing ? null : () async {
                     setState(() => _testing = true);
                     try {
-                      await _service.complete(
+                      await _service.streamCompletion(
                         model: DeepSeekService.chatModel,
                         messages: [{'role': 'user', 'content': 'Reply with OK.'}],
-                      );
+                      ).first.timeout(const Duration(seconds: 45));
                       Get.snackbar('Connected', 'DeepSeek API is responding.', snackPosition: SnackPosition.BOTTOM);
                     } catch (_) {
                       Get.snackbar('Connection failed', 'Check network, API key, or DeepSeek account access.', snackPosition: SnackPosition.BOTTOM);
