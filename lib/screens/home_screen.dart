@@ -321,6 +321,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+              // Settings and downloaded models live in the drawer,
+              // leaving the chat screen full-height without a tab bar.
+              ListTile(
+                leading: Icon(Icons.widgets_outlined, color: context.textM),
+                title: Text('Models', style: TextStyle(color: context.text)),
+                onTap: () {
+                  Navigator.pop(context);
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  setState(() => _mobileTabIndex = 1);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.settings_outlined, color: context.textM),
+                title: Text('Settings', style: TextStyle(color: context.text)),
+                onTap: () {
+                  Navigator.pop(context);
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  setState(() => _mobileTabIndex = 2);
+                },
+              ),
+              Divider(height: 1, color: context.border),
               // Chat list
               Expanded(
                 child: ChatSidebar(
@@ -341,56 +362,43 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: SafeArea(
-        bottom: false, // let the bottom nav handle the safe area
-        child: IndexedStack(
-          index: _mobileTabIndex,
+        bottom: true,
+        child: Column(
           children: [
-            // Tab 0: Chat
-            _buildMobileChatTab(),
-            // Tab 1: Models
-            const ModelLibraryScreen(embedded: true),
-            // Tab 2: Settings
-            const SettingsScreen(embedded: true),
-          ],
-        ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: context.bg,
-          border: Border(top: BorderSide(color: context.border, width: 0.5)),
-        ),
-        child: NavigationBar(
-          selectedIndex: _mobileTabIndex,
-          onDestinationSelected: (i) => setState(() => _mobileTabIndex = i),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          indicatorColor: AppColors.accent.withOpacity(0.15),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          height: 64,
-          destinations: [
-            NavigationDestination(
-              icon: Icon(Icons.chat_outlined, color: context.textM),
-              selectedIcon: const Icon(
-                Icons.chat_rounded,
-                color: AppColors.accent,
+            if (_mobileTabIndex != 0)
+              Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: context.border, width: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: 'Back to chat',
+                      onPressed: () => setState(() => _mobileTabIndex = 0),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _mobileTabIndex == 1 ? 'Models' : 'Settings',
+                      style: TextStyle(
+                        color: context.text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              label: 'Chat',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.widgets_outlined, color: context.textM),
-              selectedIcon: const Icon(
-                Icons.widgets_rounded,
-                color: AppColors.accent,
+            Expanded(
+              child: IndexedStack(
+                index: _mobileTabIndex,
+                children: [
+                  _buildMobileChatTab(),
+                  const ModelLibraryScreen(embedded: true),
+                  const SettingsScreen(embedded: true),
+                ],
               ),
-              label: 'Models',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined, color: context.textM),
-              selectedIcon: const Icon(
-                Icons.settings_rounded,
-                color: AppColors.accent,
-              ),
-              label: 'Settings',
             ),
           ],
         ),
