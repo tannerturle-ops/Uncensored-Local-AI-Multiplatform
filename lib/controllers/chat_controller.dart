@@ -133,13 +133,16 @@ class ChatController extends GetxController {
       _generationDone = finished;
       final buffer = StringBuffer();
       var lastRefresh = DateTime.now();
+      var hasShownFirstToken = false;
       _genSub = stream.listen(
         (token) {
           if (serial != _generationSerial) return;
           buffer.write(token);
           aiMsg.content = buffer.toString();
           streamedResponse.value = aiMsg.content;
-          if (DateTime.now().difference(lastRefresh).inMilliseconds >= 70) {
+          if (!hasShownFirstToken ||
+              DateTime.now().difference(lastRefresh).inMilliseconds >= 70) {
+            hasShownFirstToken = true;
             chats.refresh();
             lastRefresh = DateTime.now();
           }
