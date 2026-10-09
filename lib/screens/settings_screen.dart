@@ -10,6 +10,7 @@ import '../services/local_api_server_service.dart';
 import '../services/model_manager.dart';
 import '../services/background_optimizer_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/deepseek_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   /// When true, no Scaffold — just the body content for embedding in tabs.
@@ -156,6 +157,12 @@ class _SettingsBody extends StatelessWidget {
                 ),
               ],
 
+              const SizedBox(height: 28),
+
+              // ── Optional DeepSeek cloud provider ─────────────────────
+              _sectionHeader(context, 'DeepSeek Cloud API'),
+              const SizedBox(height: 8),
+              const _DeepSeekKeyCard(),
               const SizedBox(height: 28),
 
               // ── System Prompt ─────────────────────────────
@@ -1044,3 +1051,89 @@ class _HardwareSettingsCardState extends State<_HardwareSettingsCard> {
   }
 }
 
+
+/// API key is never added to Hive, chat transcripts, or the repository.
+class _DeepSeekKeyCard extends StatefulWidget {
+  const _DeepSeekKeyCard();
+  @override
+  State<_DeepSeekKeyCard> createState() => _DeepSeekKeyCardState();
+}
+
+class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
+  final _service = DeepSeekService();
+  final _field = TextEditingController();
+  bool _hasKey = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final exists = await _service.hasKey();
+    if (mounted) setState(() => _hasKey = exists);
+  }
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_hasKey ? 'API key saved on this device' : 'No API key configured',
+              style: TextStyle(color: context.text)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _field,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'DeepSeek API key',
+                hintText: 'Enter a new key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Cloud chats are sent to DeepSeek. Local GGUF chats stay on-device.',
+              style: TextStyle(fontSize: 12, color: context.textD)),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: _saving ? null : () async {
+                    setState(() => _saving = true);
+                    try {
+                      await _service.saveKey(_field.text);
+                      _field.clear();
+                      await _refresh();
+                    } finally {
+                      if (mounted) setState(() => _saving = false);
+                    }
+                  },
+                  child: const Text('Save key'),
+                ),
+                TextButton(
+                  onPressed: !_hasKey || _saving ? null : () async {
+                    await _service.clearKey();
+                    await _refresh();
+                  },
+                  child: const Text('Remove key'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
