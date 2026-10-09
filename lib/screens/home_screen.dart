@@ -9,6 +9,7 @@ import '../controllers/theme_controller.dart';
 import '../services/llm_service.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/typing_indicator.dart';
 import 'model_library_screen.dart';
 import 'settings_screen.dart';
 
@@ -989,13 +990,20 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(vertical: 16),
               itemCount: chat.messages.length,
               itemBuilder: (context, index) {
-                if (index < chat.messages.length) {
-                  final msg = chat.messages[index];
-                  // Show speed on the last AI message
-                  final isLastAi =
-                      msg.isAssistant && index == chat.messages.length - 1;
-                  return ChatBubble(message: msg, showSpeed: isLastAi);
+                final msg = chat.messages[index];
+                final isLastAi =
+                    msg.isAssistant && index == chat.messages.length - 1;
+                // Show Thinking only while the response is still empty.
+                // Once streaming text arrives, the ordinary bubble takes over.
+                if (isLastAi &&
+                    _chatCtrl.isGenerating.value &&
+                    msg.content.isEmpty) {
+                  return const Align(
+                    alignment: Alignment.centerLeft,
+                    child: TypingIndicator(),
+                  );
                 }
+                return ChatBubble(message: msg, showSpeed: isLastAi);
               },
             );
           }),
