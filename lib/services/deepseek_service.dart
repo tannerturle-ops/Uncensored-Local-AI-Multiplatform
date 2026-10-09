@@ -30,13 +30,14 @@ class DeepSeekService {
 
   Future<void> clearKey() => _storage.delete(key: _keyName);
 
-  /// Returns the final response text. No key is sent anywhere except DeepSeek.
-  Future<String> complete({
+  /// Streams text deltas from DeepSeek's Server-Sent Events API.
+  /// Cancelling the subscription closes the underlying HTTP client.
+  Stream<String> streamCompletion({
     required String model,
     required List<Map<String, String>> messages,
     String? systemPrompt,
     double temperature = 0.7,
-  }) async {
+  }) async* {
     final key = await _storage.read(key: _keyName);
     if (key == null || key.isEmpty) {
       throw StateError('Add your DeepSeek API key in Settings first.');
@@ -46,32 +47,43 @@ class DeepSeekService {
         {'role': 'system', 'content': systemPrompt},
       ...messages,
     ];
-    final response = await http.post(
-      Uri.parse('https://api.deepseek.com/chat/completions'),
-      headers: {
+    final client = http.Client();
+    try {
+      final req = http.Request('POST',
+          Uri.parse('https://api.deepseek.com/chat/completions'));
+      req.headers.addAll({
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $key',
-      },
-      body: jsonEncode({
+        'Accept': 'text/event-stream',
+      });
+      req.body = jsonEncode({
         'model': model,
         'messages': payload,
-        'stream': false,
+        'stream': true,
         'temperature': temperature,
-      }),
-    ).timeout(const Duration(seconds: 120));
-    if (response.statusCode != 200) {
-      // Never include response bodies: providers may echo request information.
-      throw StateError('DeepSeek request failed (HTTP ${response.statusCode}). Check your API key, model access, or network.');
+      });
+      final response = await client.send(req)
+          .timeout(const Duration(seconds: 45));
+      if (response.statusCode != 200) {
+        throw StateError('DeepSeek request failed (HTTP ${response.statusCode}). Check API key, model access, or connection.');
+      }
+      await for (final line in response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
+        if (!line.startsWith('data:')) continue;
+        final data = line.substring(5).trim();
+        if (data == '[DONE]') break;
+        if (data.isEmpty) continue;
+        final decoded = jsonDecode(data) as Map<String, dynamic>;
+        final choices = decoded['choices'] as List<dynamic>?;
+        if (choices == null || choices.isEmpty) continue;
+        final delta = (choices.first as Map<String, dynamic>)['delta']
+            as Map<String, dynamic>?;
+        final part = delta?['content'];
+        if (part is String && part.isNotEmpty) yield part;
+      }
+    } finally {
+      client.close();
     }
-    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List<dynamic>?;
-    final msg = choices?.isNotEmpty == true
-        ? (choices!.first as Map<String, dynamic>)['message'] as Map<String, dynamic>?
-        : null;
-    final result = msg?['content'] as String?;
-    if (result == null || result.trim().isEmpty) {
-      throw StateError('DeepSeek returned an empty response.');
-    }
-    return result;
   }
 }
