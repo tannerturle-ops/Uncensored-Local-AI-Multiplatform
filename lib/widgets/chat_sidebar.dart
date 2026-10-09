@@ -110,6 +110,13 @@ class ChatSidebar extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            IconButton(
+                              onPressed: () => _renameChat(context, chat.id, chat.title),
+                              icon: Icon(Icons.edit_outlined, size: 15, color: context.textD),
+                              tooltip: 'Rename chat',
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              padding: EdgeInsets.zero,
+                            ),
                             // Delete button with confirmation
                             SizedBox(
                               width: 24,
@@ -151,6 +158,31 @@ class ChatSidebar extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Future<void> _renameChat(BuildContext context, String chatId, String currentTitle) async {
+    final field = TextEditingController(text: currentTitle);
+    final title = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename chat'),
+        content: TextField(
+          controller: field,
+          autofocus: true,
+          maxLength: 100,
+          decoration: const InputDecoration(labelText: 'Chat name'),
+          onSubmitted: (value) => Navigator.pop(ctx, value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, field.text), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (title != null && title.trim().isNotEmpty) {
+      Get.find<ChatController>().renameChat(chatId, title);
+    }
+    field.dispose();
   }
 
   void _confirmDelete(BuildContext context, String chatId, String chatTitle) {
