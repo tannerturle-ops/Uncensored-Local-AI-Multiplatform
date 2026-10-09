@@ -1038,7 +1038,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 8),
             Obx(
               () => Text(
-                _llm.isLoaded.value
+                (DeepSeekService.isCloud(_modelCtrl.selectedModelFilename.value) ||
+                    _llm.isLoaded.value)
                     ? 'Type a message below to get started.'
                     : 'Select a model first to begin chatting.',
                 style: TextStyle(fontSize: 14, color: context.textM),
