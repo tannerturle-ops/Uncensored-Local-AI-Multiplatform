@@ -822,7 +822,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final fname = _modelCtrl.selectedModelFilename.value;
             final info = fname != null ? _modelCtrl.getModelInfo(fname) : null;
             return InkWell(
-              onTap: () => Get.toNamed('/models'),
+              onTap: () => _showModelPicker(context),
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.symmetric(
