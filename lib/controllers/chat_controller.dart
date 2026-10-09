@@ -20,6 +20,7 @@ class ChatController extends GetxController {
   final systemPrompt = ''.obs;
 
   StreamSubscription<String>? _genSub;
+  Completer<void>? _generationDone;
   int _generationSerial = 0;
 
   @override
@@ -129,6 +130,7 @@ class ChatController extends GetxController {
       }
 
       final finished = Completer<void>();
+      _generationDone = finished;
       final buffer = StringBuffer();
       var lastRefresh = DateTime.now();
       _genSub = stream.listen(
@@ -169,11 +171,26 @@ class ChatController extends GetxController {
         isGenerating.value = false;
         streamedResponse.value = '';
       }
-      _genSub = null;
+      if (serial == _generationSerial) {
+        _genSub = null;
+        _generationDone = null;
+      }
       chat.updatedAt = DateTime.now();
       _storage.saveChat(chat);
       chats.refresh();
     }
+  }
+
+  /// Rename a saved conversation without altering its messages.
+  void renameChat(String id, String title) {
+    final newTitle = title.trim();
+    if (newTitle.isEmpty) return;
+    final chat = chats.firstWhereOrNull((c) => c.id == id);
+    if (chat == null) return;
+    chat.title = newTitle;
+    chat.updatedAt = DateTime.now();
+    _storage.saveChat(chat);
+    chats.refresh();
   }
 
   /// Stop current generation.
@@ -181,6 +198,10 @@ class ChatController extends GetxController {
     ++_generationSerial;
     _genSub?.cancel();
     _genSub = null;
+    if (_generationDone != null && !_generationDone!.isCompleted) {
+      _generationDone!.complete();
+    }
+    _generationDone = null;
     _llm.stopGeneration();
     isGenerating.value = false;
     streamedResponse.value = '';
