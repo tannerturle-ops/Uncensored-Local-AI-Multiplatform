@@ -173,6 +173,8 @@ class _SettingsBody extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: context.textD),
               ),
               const SizedBox(height: 12),
+              _SystemPromptEditor(chatCtrl: chatCtrl),
+              /* Previous inline editor replaced with a persistent controller.
               Obx(
                 () => TextField(
                   controller:
@@ -209,6 +211,7 @@ class _SettingsBody extends StatelessWidget {
                   onChanged: (v) => chatCtrl.setGlobalSystemPrompt(v),
                 ),
               ),
+              */
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
@@ -1136,4 +1139,49 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
       ),
     );
   }
+}
+
+class _SystemPromptEditor extends StatefulWidget {
+  final ChatController chatCtrl;
+  const _SystemPromptEditor({required this.chatCtrl});
+
+  @override
+  State<_SystemPromptEditor> createState() => _SystemPromptEditorState();
+}
+
+class _SystemPromptEditorState extends State<_SystemPromptEditor> {
+  late final TextEditingController _controller;
+  Worker? _worker;
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.chatCtrl.systemPrompt.value);
+    _worker = ever<String>(widget.chatCtrl.systemPrompt, (value) {
+      if (_controller.text == value) return;
+      _controller.value = TextEditingValue(
+        text: value,
+        selection: TextSelection.collapsed(offset: value.length),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _worker?.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _controller,
+    maxLines: 4,
+    style: TextStyle(fontSize: 14, color: context.text, height: 1.5),
+    decoration: const InputDecoration(
+      labelText: 'Instructions for Mochi',
+      hintText: 'How would you like Mochi to respond?',
+      border: OutlineInputBorder(),
+    ),
+    onChanged: widget.chatCtrl.setGlobalSystemPrompt,
+  );
 }
