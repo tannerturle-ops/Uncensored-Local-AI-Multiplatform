@@ -4,8 +4,8 @@ import 'package:http/http.dart' as http;
 
 /// Optional cloud provider. Local GGUF inference remains independent of this.
 class DeepSeekService {
-  static const String chatModel = 'deepseek-chat';
-  static const String reasonerModel = 'deepseek-reasoner';
+  static const String chatModel = 'deepseek-flash';
+  static const String reasonerModel = 'deepseek-v4-pro';
   static const String chatId = 'cloud:$chatModel';
   static const String reasonerId = 'cloud:$reasonerModel';
 
