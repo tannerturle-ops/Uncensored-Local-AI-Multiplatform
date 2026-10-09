@@ -10,9 +10,13 @@ on:
       - 'pubspec.*'
       - '.github/workflows/build-ios-ipa.yml'
 
+concurrency:
+  group: mochi-ios-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ios:
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - name: Set up Flutter
