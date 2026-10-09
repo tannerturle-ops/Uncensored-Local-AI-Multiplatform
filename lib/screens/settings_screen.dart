@@ -11,6 +11,7 @@ import '../services/model_manager.dart';
 import '../services/background_optimizer_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/deepseek_service.dart';
+import '../services/wiro_auth_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   /// When true, no Scaffold — just the body content for embedding in tabs.
@@ -163,6 +164,11 @@ class _SettingsBody extends StatelessWidget {
               _sectionHeader(context, 'DeepSeek Cloud API'),
               const SizedBox(height: 8),
               const _DeepSeekKeyCard(),
+              const SizedBox(height: 28),
+
+              _sectionHeader(context, 'Images & Media · Wiro AI'),
+              const SizedBox(height: 8),
+              const _WiroKeyCard(),
               const SizedBox(height: 28),
 
               // ── System Prompt ─────────────────────────────
@@ -1119,6 +1125,168 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _WiroKeyCard extends StatefulWidget {
+  const _WiroKeyCard();
+
+  @override
+  State<_WiroKeyCard> createState() => _WiroKeyCardState();
+}
+
+class _WiroKeyCardState extends State<_WiroKeyCard> {
+  final _service = WiroAuthService();
+  final _keyField = TextEditingController();
+  final _secretField = TextEditingController();
+  bool _saved = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final saved = await _service.hasCredentials();
+    if (mounted) setState(() => _saved = saved);
+  }
+
+  @override
+  void dispose() {
+    _keyField.dispose();
+    _secretField.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.saveCredentials(
+        apiKey: _keyField.text,
+        secretKey: _secretField.text,
+      );
+      _keyField.clear();
+      _secretField.clear();
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wiro credentials saved securely.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save Wiro keys: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _test() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.testConnection();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wiro connection verified. No image was generated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connection test failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.clearCredentials();
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_saved ? 'Wiro credentials saved on this device'
+                : 'Connect a Wiro project for image generation and editing.',
+              style: TextStyle(color: context.text, fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _keyField,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Wiro API Key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _secretField,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Wiro Secret Key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Authentication: signed HMAC-SHA256 requests. '
+                'The secret key is stored on your device and is not committed to the app repository.',
+              style: TextStyle(fontSize: 12, color: context.textD)),
+            const SizedBox(height: 12),
+            Text('Image model: Seedream 5.0 Lite Uncensored (planned default)',
+              style: TextStyle(fontSize: 12, color: context.textM)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                OutlinedButton(
+                  onPressed: _busy || _keyField.text.trim().isEmpty ||
+                      _secretField.text.trim().isEmpty ? null : _save,
+                  child: const Text('Save keys'),
+                ),
+                OutlinedButton(
+                  onPressed: _busy || !_saved ? null : _test,
+                  child: const Text('Test connection'),
+                ),
+                TextButton(
+                  onPressed: _busy || !_saved ? null : _remove,
+                  child: const Text('Remove keys'),
+                ),
+              ],
+            ),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
           ],
         ),
       ),
