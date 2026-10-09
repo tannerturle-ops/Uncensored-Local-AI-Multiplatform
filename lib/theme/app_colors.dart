@@ -17,43 +17,43 @@ extension ThemeExt on BuildContext {
   Color get textD => isDark ? AppColors.darkTextD : AppColors.lightTextD;
 }
 
-/// Design tokens ported 1:1 from FastChatUI.html :root CSS variables.
+/// Pink-first design tokens for light and dark modes.
 class AppColors {
   AppColors._();
 
   // ── Common Colors ──────────────────────────────────────────────
-  static const accent    = Color(0xFF6366F1);
-  static const accentDim = Color(0xFF4F46E5);
-  static const accentHi  = Color(0xFF818CF8);
+  static const accent    = Color(0xFFE84D93);
+  static const accentDim = Color(0xFFC72B72);
+  static const accentHi  = Color(0xFFFF80B5);
   static const green  = Color(0xFF3FB950);
   static const red    = Color(0xFFF85149);
   static const orange = Color(0xFFE3B341);
 
   // ── Dark Theme Colors ──────────────────────────────────────────
-  static const darkBg        = Color(0xFF0D1117); // Dark gray
-  static const darkBgSidebar = Color(0xFF0D1117);
-  static const darkBgPanel   = Color(0xFF161B22);
-  static const darkBgInput   = Color(0xFF1C2128);
-  static const darkBgMsgAi   = Color(0xFF161B22);
-  static const darkBgHover   = Color(0xFF1C2128);
-  static const darkBorder    = Color(0xFF30363D);
-  static const darkBorderFaint = Color(0xFF21262D);
-  static const darkText      = Color(0xFFE6EDF3);
-  static const darkTextM     = Color(0xFF8B949E);
-  static const darkTextD     = Color(0xFF484F58);
+  static const darkBg        = Color(0xFF130E16); // Near-black plum
+  static const darkBgSidebar = Color(0xFF130E16);
+  static const darkBgPanel   = Color(0xFF211725);
+  static const darkBgInput   = Color(0xFF2B1E2E);
+  static const darkBgMsgAi   = Color(0xFF211725);
+  static const darkBgHover   = Color(0xFF2B1E2E);
+  static const darkBorder    = Color(0xFF473547);
+  static const darkBorderFaint = Color(0xFF362639);
+  static const darkText      = Color(0xFFF8F0F7);
+  static const darkTextM     = Color(0xFFC6AEBD);
+  static const darkTextD     = Color(0xFF947C91);
 
   // ── Light Theme Colors ─────────────────────────────────────────
   static const lightBg        = Color(0xFFFFFFFF);
-  static const lightBgSidebar = Color(0xFFF7F7F8); // Very light gray like ChatGPT/Claude
-  static const lightBgPanel   = Color(0xFFF7F7F8);
+  static const lightBgSidebar = Color(0xFFFFF5FA); // Soft blush white
+  static const lightBgPanel   = Color(0xFFFFF5FA);
   static const lightBgInput   = Color(0xFFFFFFFF);
-  static const lightBgMsgAi   = Color(0xFFF7F7F8);
-  static const lightBgHover   = Color(0xFFE5E7EB);
-  static const lightBorder    = Color(0xFFE5E7EB); // Soft borders
-  static const lightBorderFaint = Color(0xFFF3F4F6);
-  static const lightText      = Color(0xFF0F172A); // Dark slate
-  static const lightTextM     = Color(0xFF475569);
-  static const lightTextD     = Color(0xFF94A3B8);
+  static const lightBgMsgAi   = Color(0xFFFFF5FA);
+  static const lightBgHover   = Color(0xFFF5DCE8);
+  static const lightBorder    = Color(0xFFF5DCE8); // Soft borders
+  static const lightBorderFaint = Color(0xFFFFEAF3);
+  static const lightText      = Color(0xFF301A2A); // Dark slate
+  static const lightTextM     = Color(0xFF70546A);
+  static const lightTextD     = Color(0xFFA58D9F);
 
   // ── Label colours ────────────────────────────────────────────
   static const uncensored = Color(0xFFEF4444);
@@ -62,7 +62,7 @@ class AppColors {
 
   // ── Gradients ────────────────────────────────────────────────
   static const accentGradient = LinearGradient(
-    colors: [accent, Color(0xFF8B5CF6)],
+    colors: [accent, Color(0xFFFF9AC5)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
