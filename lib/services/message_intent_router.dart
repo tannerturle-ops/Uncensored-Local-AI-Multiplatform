@@ -43,7 +43,7 @@ class MessageIntentRouter {
     }
 
     if (RegExp(
-      r'\\b(draw|illustrate|paint|sketch)\\b|\\b(generate|render|design)\\b.*\\b(image|picture|photo|artwork|illustration|drawing|portrait|scene)\\b',
+      r'\b(draw|illustrate|paint|sketch)\b|\b(generate|render|design)\b.*\b(image|picture|photo|artwork|illustration|drawing|portrait|scene)\b',
     ).hasMatch(text) &&
         !RegExp(r'\b(don\x27t|do not|without)\s+(?:generate|draw|illustrate|paint|render|design|sketch)\b').hasMatch(text)) {
       return MochiIntent.generateImage;
