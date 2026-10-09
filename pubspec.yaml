@@ -1,7 +1,7 @@
 name: portable_ai_flutter
-description: "Portable AI — Run uncensored local LLMs natively on any device."
+description: "Mochi — friendly local and cloud AI assistant."
 publish_to: 'none'
-version: 1.1.0+2
+version: 1.2.0+3
 
 environment:
   sdk: ^3.11.4
@@ -21,6 +21,8 @@ dependencies:
   hive: ^2.2.3                     # Hive core key-value + box storage
 
   # ── Networking / Downloads ──────────────────────────────────────
+  flutter_secure_storage: ^9.2.4
+  crypto: ^3.0.6                    # Wiro HMAC request signatures
   http: ^1.2.2                     # HTTP requests + model downloading
 
   # ── File System ─────────────────────────────────────────────────

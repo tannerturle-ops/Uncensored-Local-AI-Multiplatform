@@ -4,11 +4,22 @@ import 'package:get/get.dart';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
 import '../services/llm_service.dart';
+import '../services/deepseek_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/image_task_service.dart';
+import '../services/image_provider.dart';
+import '../services/message_intent_router.dart';
+import '../services/wiro_auth_service.dart';
+import '../services/wiro_image_provider.dart';
 
 class ChatController extends GetxController {
   final LlmService _llm = Get.find<LlmService>();
+  final DeepSeekService _deepseek = DeepSeekService();
   final ChatStorageService _storage = Get.find<ChatStorageService>();
+  final ImageTaskService _imageTasks = ImageTaskService();
+  final MessageIntentRouter _intentRouter = const MessageIntentRouter();
+
+  void configureImageProvider(ImageProvider provider) => _imageTasks.configure(provider);
 
   final chats = <ChatModel>[].obs;
   final activeChatId = RxnString();
@@ -18,6 +29,8 @@ class ChatController extends GetxController {
   final systemPrompt = ''.obs;
 
   StreamSubscription<String>? _genSub;
+  Completer<void>? _generationDone;
+  int _generationSerial = 0;
 
   @override
   void onInit() {
@@ -71,7 +84,7 @@ class ChatController extends GetxController {
 
   /// Send a user message and stream AI response.
   Future<void> sendMessage(String text, {String? modelFilename}) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || isGenerating.value) return;
     final chat = activeChat;
     if (chat == null) return;
 
@@ -89,6 +102,59 @@ class ChatController extends GetxController {
     _storage.saveChat(chat);
     chats.refresh();
 
+    // Image requests stay in this exact conversation, even if they route to
+    // another provider. Never synthesize an edit without the source image.
+    MessageModel? imageSource;
+    for (final candidate in chat.messages.reversed) {
+      if (candidate.imageLocalPath != null ||
+          candidate.imageBase64 != null) {
+        imageSource = candidate;
+        break;
+      }
+    }
+    final imageIntent = _intentRouter.classify(
+      text,
+      hasRecentImage: imageSource != null,
+    );
+    if (imageIntent == MochiIntent.generateImage ||
+        imageIntent == MochiIntent.editImage) {
+      isGenerating.value = true;
+      final requestSerial = ++_generationSerial;
+      try {
+        // Automatically register Wiro when valid credentials are present.
+        // No separate provider selector is required for the first integration.
+        if (await WiroAuthService().hasCredentials()) {
+          _imageTasks.configure(WiroImageProvider());
+        }
+        final MessageModel imageReply;
+        if (imageIntent == MochiIntent.editImage) {
+          if (imageSource == null) {
+            throw StateError('Attach or generate an image before editing it.');
+          }
+          imageReply = await _imageTasks.edit(prompt: text, source: imageSource);
+        } else {
+          imageReply = await _imageTasks.create(text);
+        }
+        if (requestSerial == _generationSerial) {
+          chat.messages.add(imageReply);
+        }
+      } catch (error) {
+        if (requestSerial == _generationSerial) {
+          chat.messages.add(MessageModel(
+            role: MessageRole.assistant,
+            content: '⚠ Image request: $error',
+          ));
+        }
+      } finally {
+        if (requestSerial == _generationSerial) {
+          isGenerating.value = false;
+        }
+        await _storage.saveChat(chat);
+        chats.refresh();
+      }
+      return;
+    }
+
     // Build message history for LLM
     final history = chat.messages
         .where((m) => !m.isSystem)
@@ -96,6 +162,7 @@ class ChatController extends GetxController {
         .toList();
 
     // Start generation
+    final serial = ++_generationSerial;
     isGenerating.value = true;
     streamedResponse.value = '';
 
@@ -104,19 +171,56 @@ class ChatController extends GetxController {
     chats.refresh();
 
     try {
-      final stream = _llm.generate(
-        messages: history,
-        systemPrompt: chat.systemPrompt.isNotEmpty
-            ? chat.systemPrompt
-            : systemPrompt.value,
-        temperature: temperature.value,
-      );
+      final prompt = chat.systemPrompt.isNotEmpty
+          ? chat.systemPrompt
+          : systemPrompt.value;
+      final cloudId = modelFilename ?? '';
+      final Stream<String> stream;
+      if (DeepSeekService.isCloud(cloudId)) {
+        stream = _deepseek.streamCompletion(
+          model: DeepSeekService.modelFromId(cloudId),
+          messages: history,
+          systemPrompt: prompt,
+          temperature: temperature.value,
+        );
+      } else {
+        stream = _llm.generate(
+          messages: history,
+          systemPrompt: prompt,
+          temperature: temperature.value,
+        );
+      }
 
-      await for (final token in stream) {
-        streamedResponse.value += token;
-        aiMsg.content = streamedResponse.value;
-        // Throttle UI refreshes
-        chats.refresh();
+      final finished = Completer<void>();
+      _generationDone = finished;
+      final buffer = StringBuffer();
+      var lastRefresh = DateTime.now();
+      var hasShownFirstToken = false;
+      _genSub = stream.listen(
+        (token) {
+          if (serial != _generationSerial) return;
+          buffer.write(token);
+          aiMsg.content = buffer.toString();
+          streamedResponse.value = aiMsg.content;
+          if (!hasShownFirstToken ||
+              DateTime.now().difference(lastRefresh).inMilliseconds >= 70) {
+            hasShownFirstToken = true;
+            chats.refresh();
+            lastRefresh = DateTime.now();
+          }
+        },
+        onError: (Object error) {
+          if (!finished.isCompleted) finished.completeError(error);
+        },
+        onDone: () {
+          if (!finished.isCompleted) finished.complete();
+        },
+        cancelOnError: true,
+      );
+      await finished.future;
+      aiMsg.content = buffer.toString();
+      if (aiMsg.content.trim().isEmpty && serial == _generationSerial) {
+        aiMsg.content = 'No response was returned. Please try again.';
       }
     } catch (e) {
       if (aiMsg.content.isEmpty) {
@@ -131,18 +235,47 @@ class ChatController extends GetxController {
             r'|<\|pad\|>|</s>|<s>|\[INST\]|\[/INST\]|\[end\]'
           ), '')
           .trim();
-      isGenerating.value = false;
-      streamedResponse.value = '';
+      if (serial == _generationSerial) {
+        isGenerating.value = false;
+        streamedResponse.value = '';
+      }
+      if (serial == _generationSerial) {
+        _genSub = null;
+        _generationDone = null;
+      }
+      if (aiMsg.content.trim().isEmpty) {
+        chat.messages.remove(aiMsg);
+      }
       chat.updatedAt = DateTime.now();
       _storage.saveChat(chat);
       chats.refresh();
     }
   }
 
+  /// Rename a saved conversation without altering its messages.
+  void renameChat(String id, String title) {
+    final newTitle = title.trim();
+    if (newTitle.isEmpty) return;
+    final chat = chats.firstWhereOrNull((c) => c.id == id);
+    if (chat == null) return;
+    chat.title = newTitle;
+    chat.updatedAt = DateTime.now();
+    _storage.saveChat(chat);
+    chats.refresh();
+  }
+
   /// Stop current generation.
   void stopGeneration() {
+    ++_generationSerial;
+    _genSub?.cancel();
+    _genSub = null;
+    if (_generationDone != null && !_generationDone!.isCompleted) {
+      _generationDone!.complete();
+    }
+    _generationDone = null;
     _llm.stopGeneration();
     isGenerating.value = false;
+    streamedResponse.value = '';
   }
 
   /// Update the system prompt for the active chat.

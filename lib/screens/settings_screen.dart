@@ -10,6 +10,8 @@ import '../services/local_api_server_service.dart';
 import '../services/model_manager.dart';
 import '../services/background_optimizer_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/deepseek_service.dart';
+import '../services/wiro_auth_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   /// When true, no Scaffold — just the body content for embedding in tabs.
@@ -158,6 +160,17 @@ class _SettingsBody extends StatelessWidget {
 
               const SizedBox(height: 28),
 
+              // ── Optional DeepSeek cloud provider ─────────────────────
+              _sectionHeader(context, 'DeepSeek Cloud API'),
+              const SizedBox(height: 8),
+              const _DeepSeekKeyCard(),
+              const SizedBox(height: 28),
+
+              _sectionHeader(context, 'Images & Media · Wiro AI'),
+              const SizedBox(height: 8),
+              const _WiroKeyCard(),
+              const SizedBox(height: 28),
+
               // ── System Prompt ─────────────────────────────
               _sectionHeader(context, 'Global System Prompt'),
               const SizedBox(height: 8),
@@ -166,42 +179,7 @@ class _SettingsBody extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: context.textD),
               ),
               const SizedBox(height: 12),
-              Obx(
-                () => TextField(
-                  controller:
-                      TextEditingController(text: chatCtrl.systemPrompt.value)
-                        ..selection = TextSelection.fromPosition(
-                          TextPosition(
-                            offset: chatCtrl.systemPrompt.value.length,
-                          ),
-                        ),
-                  maxLines: 4,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: context.text,
-                    height: 1.5,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'e.g. You are a helpful assistant...',
-                    hintStyle: TextStyle(color: context.textD),
-                    filled: true,
-                    fillColor: context.bgInput,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: context.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: context.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.accent),
-                    ),
-                  ),
-                  onChanged: (v) => chatCtrl.setGlobalSystemPrompt(v),
-                ),
-              ),
+              _SystemPromptEditor(chatCtrl: chatCtrl),
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
@@ -1044,3 +1022,319 @@ class _HardwareSettingsCardState extends State<_HardwareSettingsCard> {
   }
 }
 
+
+/// API key is never added to Hive, chat transcripts, or the repository.
+class _DeepSeekKeyCard extends StatefulWidget {
+  const _DeepSeekKeyCard();
+  @override
+  State<_DeepSeekKeyCard> createState() => _DeepSeekKeyCardState();
+}
+
+class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
+  final _service = DeepSeekService();
+  final _field = TextEditingController();
+  bool _hasKey = false;
+  bool _saving = false;
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final exists = await _service.hasKey();
+    if (mounted) setState(() => _hasKey = exists);
+  }
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_hasKey ? 'API key saved on this device' : 'No API key configured',
+              style: TextStyle(color: context.text)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _field,
+              onChanged: (_) => setState(() {}),
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'DeepSeek API key',
+                hintText: 'Enter a new key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Cloud chats are sent to DeepSeek. Local GGUF chats stay on-device.',
+              style: TextStyle(fontSize: 12, color: context.textD)),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: _saving || _testing || _field.text.trim().isEmpty ? null : () async {
+                    setState(() => _saving = true);
+                    try {
+                      await _service.saveKey(_field.text);
+                      _field.clear();
+                      await _refresh();
+                      Get.snackbar('Saved', 'DeepSeek key saved securely on this device.', snackPosition: SnackPosition.BOTTOM);
+                    } catch (_) {
+                      Get.snackbar('Save failed', 'Could not store the API key.', snackPosition: SnackPosition.BOTTOM);
+                    } finally {
+                      if (mounted) setState(() => _saving = false);
+                    }
+                  },
+                  child: const Text('Save key'),
+                ),
+                TextButton(
+                  onPressed: !_hasKey || _saving || _testing ? null : () async {
+                    await _service.clearKey();
+                    await _refresh();
+                  },
+                  child: const Text('Remove key'),
+                ),
+                TextButton.icon(
+                  onPressed: !_hasKey || _saving || _testing ? null : () async {
+                    setState(() => _testing = true);
+                    try {
+                      await _service.streamCompletion(
+                        model: DeepSeekService.chatModel,
+                        messages: [{'role': 'user', 'content': 'Reply with OK.'}],
+                      ).first.timeout(const Duration(seconds: 45));
+                      Get.snackbar('Connected', 'DeepSeek API is responding.', snackPosition: SnackPosition.BOTTOM);
+                    } catch (_) {
+                      Get.snackbar('Connection failed', 'Check network, API key, or DeepSeek account access.', snackPosition: SnackPosition.BOTTOM);
+                    } finally {
+                      if (mounted) setState(() => _testing = false);
+                    }
+                  },
+                  icon: _testing ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering_rounded, size: 16),
+                  label: const Text('Test connection'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _WiroKeyCard extends StatefulWidget {
+  const _WiroKeyCard();
+
+  @override
+  State<_WiroKeyCard> createState() => _WiroKeyCardState();
+}
+
+class _WiroKeyCardState extends State<_WiroKeyCard> {
+  final _service = WiroAuthService();
+  final _keyField = TextEditingController();
+  final _secretField = TextEditingController();
+  bool _saved = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final saved = await _service.hasCredentials();
+    if (mounted) setState(() => _saved = saved);
+  }
+
+  @override
+  void dispose() {
+    _keyField.dispose();
+    _secretField.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.saveCredentials(
+        apiKey: _keyField.text,
+        secretKey: _secretField.text,
+      );
+      _keyField.clear();
+      _secretField.clear();
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wiro credentials saved securely.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save Wiro keys: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _test() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.testConnection();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wiro connection verified. No image was generated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connection test failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.clearCredentials();
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_saved ? 'Wiro credentials saved on this device'
+                : 'Connect a Wiro project for image generation and editing.',
+              style: TextStyle(color: context.text, fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _keyField,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Wiro API Key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _secretField,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Wiro Secret Key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Authentication: signed HMAC-SHA256 requests. '
+                'The secret key is stored on your device and is not committed to the app repository.',
+              style: TextStyle(fontSize: 12, color: context.textD)),
+            const SizedBox(height: 12),
+            Text('Image model: Seedream 5.0 Lite Uncensored (planned default)',
+              style: TextStyle(fontSize: 12, color: context.textM)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                OutlinedButton(
+                  onPressed: _busy || _keyField.text.trim().isEmpty ||
+                      _secretField.text.trim().isEmpty ? null : _save,
+                  child: const Text('Save keys'),
+                ),
+                OutlinedButton(
+                  onPressed: _busy || !_saved ? null : _test,
+                  child: const Text('Test connection'),
+                ),
+                TextButton(
+                  onPressed: _busy || !_saved ? null : _remove,
+                  child: const Text('Remove keys'),
+                ),
+              ],
+            ),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SystemPromptEditor extends StatefulWidget {
+  final ChatController chatCtrl;
+  const _SystemPromptEditor({required this.chatCtrl});
+
+  @override
+  State<_SystemPromptEditor> createState() => _SystemPromptEditorState();
+}
+
+class _SystemPromptEditorState extends State<_SystemPromptEditor> {
+  late final TextEditingController _controller;
+  Worker? _worker;
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.chatCtrl.systemPrompt.value);
+    _worker = ever<String>(widget.chatCtrl.systemPrompt, (value) {
+      if (_controller.text == value) return;
+      _controller.value = TextEditingValue(
+        text: value,
+        selection: TextSelection.collapsed(offset: value.length),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _worker?.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _controller,
+    maxLines: 4,
+    style: TextStyle(fontSize: 14, color: context.text, height: 1.5),
+    decoration: const InputDecoration(
+      labelText: 'Instructions for Mochi',
+      hintText: 'How would you like Mochi to respond?',
+      border: OutlineInputBorder(),
+    ),
+    onChanged: widget.chatCtrl.setGlobalSystemPrompt,
+  );
+}
