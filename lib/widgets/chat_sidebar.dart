@@ -66,7 +66,7 @@ class _ChatSidebarState extends State<ChatSidebar> {
 
         // Search saved conversations by title or message content.
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
           child: TextField(
             controller: _search,
             onChanged: (_) => setState(() {}),
@@ -107,14 +107,14 @@ class _ChatSidebarState extends State<ChatSidebar> {
             }
 
             return ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
               itemCount: chats.length,
               itemBuilder: (context, index) {
                 final chat = chats[index];
                 final isActive = chat.id == ctrl.activeChatId.value;
 
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
+                  padding: const EdgeInsets.only(bottom: 8),
                   child: Material(
                     color: isActive ? context.bgHover : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
