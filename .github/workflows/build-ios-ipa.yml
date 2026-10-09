@@ -22,12 +22,26 @@ jobs:
           cache: true
       - name: Install Dart dependencies
         run: flutter pub get
-      - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign
+      - name: Prepare Flutter iOS project
+        run: flutter build ios --release --no-codesign || true
+      - name: Build iOS with signing explicitly disabled
+        run: |
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/UnsignedDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            build
+          test -d build/UnsignedDerivedData/Build/Products/Release-iphoneos/Runner.app
       - name: Package for external signing
         run: |
           mkdir -p Payload
-          cp -R build/ios/iphoneos/Runner.app Payload/
+          cp -R build/UnsignedDerivedData/Build/Products/Release-iphoneos/Runner.app Payload/
           zip -qry PortableAI-unsigned.ipa Payload
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
