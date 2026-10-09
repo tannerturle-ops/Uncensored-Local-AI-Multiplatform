@@ -30,17 +30,17 @@ class AppColors {
   static const orange = Color(0xFFE3B341);
 
   // ── Dark Theme Colors ──────────────────────────────────────────
-  static const darkBg        = Color(0xFF130E16); // Near-black plum
-  static const darkBgSidebar = Color(0xFF130E16);
-  static const darkBgPanel   = Color(0xFF211725);
-  static const darkBgInput   = Color(0xFF2B1E2E);
-  static const darkBgMsgAi   = Color(0xFF211725);
-  static const darkBgHover   = Color(0xFF2B1E2E);
-  static const darkBorder    = Color(0xFF473547);
-  static const darkBorderFaint = Color(0xFF362639);
-  static const darkText      = Color(0xFFF8F0F7);
-  static const darkTextM     = Color(0xFFC6AEBD);
-  static const darkTextD     = Color(0xFF947C91);
+  static const darkBg        = Color(0xFF121212); // Neutral charcoal
+  static const darkBgSidebar = Color(0xFF121212);
+  static const darkBgPanel   = Color(0xFF1D1D1F);
+  static const darkBgInput   = Color(0xFF262629);
+  static const darkBgMsgAi   = Color(0xFF1D1D1F);
+  static const darkBgHover   = Color(0xFF262629);
+  static const darkBorder    = Color(0xFF39393D);
+  static const darkBorderFaint = Color(0xFF2C2C30);
+  static const darkText      = Color(0xFFF7F7F8);
+  static const darkTextM     = Color(0xFFB8B8BD);
+  static const darkTextD     = Color(0xFF85858D);
 
   // ── Light Theme Colors ─────────────────────────────────────────
   static const lightBg        = Color(0xFFFFFFFF);
