@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 
 import '../theme/app_colors.dart';
@@ -42,22 +43,30 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_handleChatScroll);
     _chatRefreshWorker = ever(_chatCtrl.chats, (_) => _scrollToBottom());
   }
 
   @override
   void dispose() {
     _chatRefreshWorker?.dispose();
-    _scrollController.removeListener(_handleChatScroll);
     _scrollController.dispose();
     _msgController.dispose();
     super.dispose();
   }
 
-  void _handleChatScroll() {
-    if (!_scrollController.hasClients) return;
-    _autoScrollToBottom = _isNearBottom();
+  // Only user-initiated scroll gestures may change follow mode.
+  // Programmatic jumps and streaming layout updates must not re-enable it.
+  bool _handleUserScroll(UserScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification.direction == ScrollDirection.forward) {
+      // User is scrolling toward older messages: stop following immediately.
+      _autoScrollToBottom = false;
+    } else if (notification.direction == ScrollDirection.reverse &&
+        _isNearBottom()) {
+      // Resume only when the user scrolls back near the newest reply.
+      _autoScrollToBottom = true;
+    }
+    return false;
   }
 
   bool _isNearBottom() {
@@ -984,27 +993,29 @@ class _HomeScreenState extends State<HomeScreen> {
               _scrollToBottom(force: true);
             }
 
-            return ListView.builder(
-              controller: _scrollController,
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              itemCount: chat.messages.length,
-              itemBuilder: (context, index) {
-                final msg = chat.messages[index];
-                final isLastAi =
-                    msg.isAssistant && index == chat.messages.length - 1;
-                // Show Thinking only while the response is still empty.
-                // Once streaming text arrives, the ordinary bubble takes over.
-                if (isLastAi &&
-                    _chatCtrl.isGenerating.value &&
-                    msg.content.isEmpty) {
-                  return const Align(
-                    alignment: Alignment.centerLeft,
-                    child: TypingIndicator(),
-                  );
-                }
-                return ChatBubble(message: msg, showSpeed: isLastAi);
-              },
+            return NotificationListener<UserScrollNotification>(
+              onNotification: _handleUserScroll,
+              child: ListView.builder(
+                controller: _scrollController,
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                itemCount: chat.messages.length,
+                itemBuilder: (context, index) {
+                  final msg = chat.messages[index];
+                  final isLastAi =
+                      msg.isAssistant && index == chat.messages.length - 1;
+                  // Thinking is outside the message bubble until text arrives.
+                  if (isLastAi &&
+                      _chatCtrl.isGenerating.value &&
+                      msg.content.isEmpty) {
+                    return const Align(
+                      alignment: Alignment.centerLeft,
+                      child: TypingIndicator(),
+                    );
+                  }
+                  return ChatBubble(message: msg, showSpeed: isLastAi);
+                },
+              ),
             );
           }),
         ),
