@@ -28,6 +28,9 @@ class WiroImageProvider implements ImageProvider {
   };
 
   @override
+  bool supports(ImageCapability capability) => capabilities.contains(capability);
+
+  @override
   Future<ImageResult> generate(ImageRequest request) => _run(request);
 
   @override
