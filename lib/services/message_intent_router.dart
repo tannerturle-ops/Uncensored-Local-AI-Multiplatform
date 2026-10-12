@@ -7,7 +7,7 @@ class MessageIntentRouter {
 
   MochiIntent classify(String input, {bool hasAttachedImage = false, bool hasRecentImage = false}) {
     final text = input.trim().toLowerCase();
-    if (text.isEmpty) return MochiIntent.chat;
+    if (text.isEmpty) return hasAttachedImage ? MochiIntent.analyzeImage : MochiIntent.chat;
 
     final asksAboutImage = RegExp(
       r'\b(what\s+(?:is|are|does)|describe|explain|identify|read|analy[sz]e|inspect|translate|summari[sz]e)\b',
