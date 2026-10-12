@@ -12,6 +12,7 @@ import '../services/background_optimizer_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/deepseek_service.dart';
 import '../services/wiro_auth_service.dart';
+import '../services/vision_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   /// When true, no Scaffold — just the body content for embedding in tabs.
@@ -169,6 +170,10 @@ class _SettingsBody extends StatelessWidget {
               _sectionHeader(context, 'Images & Media · Wiro AI'),
               const SizedBox(height: 8),
               const _WiroKeyCard(),
+              const SizedBox(height: 12),
+              _ImageOptionsCard(storage: storage),
+              const SizedBox(height: 12),
+              const _VisionKeyCard(),
               const SizedBox(height: 28),
 
               // ── System Prompt ─────────────────────────────
@@ -1292,6 +1297,163 @@ class _WiroKeyCardState extends State<_WiroKeyCard> {
       ),
     );
   }
+}
+
+
+class _ImageOptionsCard extends StatefulWidget {
+  const _ImageOptionsCard({required this.storage});
+  final ChatStorageService storage;
+  @override
+  State<_ImageOptionsCard> createState() => _ImageOptionsCardState();
+}
+class _ImageOptionsCardState extends State<_ImageOptionsCard> {
+  @override
+  Widget build(BuildContext context) {
+    final storage = widget.storage;
+    return Card(child: Padding(padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Image generation', style: TextStyle(
+          fontSize: 15, fontWeight: FontWeight.w600, color: context.text)),
+        SwitchListTile(
+          title: const Text('Automatic image routing'),
+          subtitle: const Text('Generate images when requested in regular chat'),
+          activeThumbColor: AppColors.accent,
+          contentPadding: EdgeInsets.zero,
+          value: storage.automaticImageRouting,
+          onChanged: (value) => setState(() => storage.automaticImageRouting = value),
+        ),
+        DropdownButtonFormField<String>(
+          value: storage.imageProvider,
+          decoration: const InputDecoration(
+            labelText: 'Image provider', border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 'wiro', child: Text('Wiro AI')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => storage.imageProvider = value);
+          },
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: storage.imageModel,
+          decoration: const InputDecoration(
+            labelText: 'Image model', border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 'seedream-v5-lite-uncensored',
+              child: Text('Seedream 5.0 Lite · $0.035')),
+            DropdownMenuItem(value: 'seedream-v4.5-uncensored',
+              child: Text('Seedream 4.5 · $0.03')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => storage.imageModel = value);
+          },
+        ),
+        const SizedBox(height: 16),
+        Text('Monthly image budget (USD)', style: TextStyle(color: context.text)),
+        Slider(
+          min: 0, max: 50, divisions: 50,
+          value: storage.monthlyImageBudget.clamp(0, 50),
+          activeColor: AppColors.accent,
+          label: storage.monthlyImageBudget == 0
+              ? 'No limit' : '\${storage.monthlyImageBudget.toStringAsFixed(0)}',
+          onChanged: (v) => setState(() => storage.monthlyImageBudget = v),
+        ),
+        Text(storage.monthlyImageBudget == 0
+          ? 'No monthly limit · use caution'
+          : 'Estimated spending: \${storage.thisMonthImageSpend.toStringAsFixed(2)} / \${storage.monthlyImageBudget.toStringAsFixed(2)} this month',
+          style: TextStyle(color: context.textM, fontSize: 12)),
+        const SizedBox(height: 6),
+        Text('Local estimates only. Provider billing may differ, and failed or '
+          'cancelled jobs may still incur charges.',
+          style: TextStyle(color: context.textD, fontSize: 12)),
+      ]),
+    ));
+  }
+}
+
+class _VisionKeyCard extends StatefulWidget {
+  const _VisionKeyCard();
+  @override
+  State<_VisionKeyCard> createState() => _VisionKeyCardState();
+}
+
+class _VisionKeyCardState extends State<_VisionKeyCard> {
+  final _vision = VisionService();
+  final _endpoint = TextEditingController();
+  final _model = TextEditingController();
+  final _key = TextEditingController();
+  bool _configured = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+  Future<void> _refresh() async {
+    final result = await _vision.isConfigured;
+    if (mounted) setState(() => _configured = result);
+  }
+  @override
+  void dispose() {
+    _endpoint.dispose();
+    _model.dispose();
+    _key.dispose();
+    super.dispose();
+  }
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    try {
+      await _vision.configure(
+        endpoint: _endpoint.text, model: _model.text, apiKey: _key.text);
+      _key.clear();
+      await _refresh();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vision model configuration saved securely.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Vision setup failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Photo understanding (optional)',
+          style: TextStyle(color: context.text,
+            fontWeight: FontWeight.w600, fontSize: 15)),
+        const SizedBox(height: 6),
+        Text(_configured ? 'Vision model configured'
+          : 'Use an OpenAI-compatible image/vision model. DeepSeek stays your chat model.',
+          style: TextStyle(color: context.textM, fontSize: 12)),
+        const SizedBox(height: 12),
+        TextField(controller: _endpoint,
+          decoration: const InputDecoration(
+            labelText: 'HTTPS chat-completions URL', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _model,
+          decoration: const InputDecoration(
+            labelText: 'Vision model ID', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _key, obscureText: true,
+          enableSuggestions: false, autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Vision API key', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        Wrap(spacing: 6, children: [
+          TextButton(onPressed: _busy ? null : _save,
+            child: const Text('Save vision model')),
+          TextButton(onPressed: _busy || !_configured ? null : () async {
+              await _vision.clear();
+              await _refresh();
+            }, child: const Text('Remove')),
+        ]),
+      ]),
+    ),
+  );
 }
 
 class _SystemPromptEditor extends StatefulWidget {
