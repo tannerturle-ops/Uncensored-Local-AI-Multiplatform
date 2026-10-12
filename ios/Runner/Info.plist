@@ -24,6 +24,12 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Mochi uses your camera to attach pictures to conversations.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Mochi lets you choose images to send to your AI assistant.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Mochi saves your generated images to Photos when you choose Save.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
