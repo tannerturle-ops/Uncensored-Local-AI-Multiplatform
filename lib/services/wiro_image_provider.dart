@@ -9,17 +9,17 @@ import 'wiro_auth_service.dart';
 
 /// Seedream adapter. Only this class understands Wiro's API/task protocol.
 class WiroImageProvider implements ImageProvider {
-  WiroImageProvider({WiroAuthService? auth})
-      : _auth = auth ?? WiroAuthService();
+  WiroImageProvider({WiroAuthService? auth, String model = 'seedream-v5-lite-uncensored'})
+      : _auth = auth ?? WiroAuthService(), _model = model;
 
   final WiroAuthService _auth;
   static const _base = 'https://api.wiro.ai/v1';
-  static const _model = 'seedream-v5-lite-uncensored';
+  final String _model;
 
   @override
   String get id => 'wiro';
   @override
-  String get displayName => 'Wiro AI · Seedream 5.0 Lite';
+  String get displayName => 'Wiro AI · $_model';
   @override
   Set<ImageCapability> get capabilities => {
     ImageCapability.textToImage,
@@ -139,7 +139,7 @@ class WiroImageProvider implements ImageProvider {
           providerId: id,
           modelId: _model,
           prompt: request.prompt,
-          estimatedCostUsd: 0.035,
+          estimatedCostUsd: _model.contains('v5') ? 0.035 : 0.03,
         );
       }
       throw TimeoutException(
