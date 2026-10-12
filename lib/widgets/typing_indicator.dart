@@ -3,7 +3,8 @@ import '../theme/app_colors.dart';
 
 /// Lightweight animated status shown before Mochi receives response text.
 class TypingIndicator extends StatefulWidget {
-  const TypingIndicator({super.key});
+  const TypingIndicator({super.key, this.label = 'Thinking…'});
+  final String label;
 
   @override
   State<TypingIndicator> createState() => _TypingIndicatorState();
@@ -54,7 +55,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
               CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
             ),
             child: Text(
-              'Thinking…',
+              widget.label,
               style: TextStyle(
                 color: context.textM,
                 fontSize: 14,
