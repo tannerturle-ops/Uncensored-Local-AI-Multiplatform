@@ -1355,12 +1355,12 @@ class _ImageOptionsCardState extends State<_ImageOptionsCard> {
           value: storage.monthlyImageBudget.clamp(0, 50),
           activeColor: AppColors.accent,
           label: storage.monthlyImageBudget == 0
-              ? 'No limit' : '\${storage.monthlyImageBudget.toStringAsFixed(0)}',
+              ? 'No limit' : '${storage.monthlyImageBudget.toStringAsFixed(0)}',
           onChanged: (v) => setState(() => storage.monthlyImageBudget = v),
         ),
         Text(storage.monthlyImageBudget == 0
           ? 'No monthly limit · use caution'
-          : 'Estimated spending: \${storage.thisMonthImageSpend.toStringAsFixed(2)} / \${storage.monthlyImageBudget.toStringAsFixed(2)} this month',
+          : 'Estimated spending: ${storage.thisMonthImageSpend.toStringAsFixed(2)} / ${storage.monthlyImageBudget.toStringAsFixed(2)} this month',
           style: TextStyle(color: context.textM, fontSize: 12)),
         const SizedBox(height: 6),
         Text('Local estimates only. Provider billing may differ, and failed or '
