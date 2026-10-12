@@ -6,6 +6,7 @@ void main() {
 
   test('clear generation commands route to image generation', () {
     expect(router.classify('Draw a pink castle'), MochiIntent.generateImage);
+    expect(router.classify('Make me a pink bedroom'), MochiIntent.generateImage);
     expect(router.classify('Generate an image of a cat'), MochiIntent.generateImage);
     expect(router.classify('Create a picture of a fairy forest'), MochiIntent.generateImage);
   });
