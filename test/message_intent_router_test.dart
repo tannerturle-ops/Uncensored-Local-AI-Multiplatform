@@ -26,5 +26,6 @@ void main() {
   test('photo questions with attachment route to analysis', () {
     expect(router.classify('What is this?', hasAttachedImage: true), MochiIntent.analyzeImage);
     expect(router.classify('Describe this screenshot', hasAttachedImage: true), MochiIntent.analyzeImage);
+    expect(router.classify('', hasAttachedImage: true), MochiIntent.analyzeImage);
   });
 }
