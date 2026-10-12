@@ -638,7 +638,7 @@ class _SettingsBody extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      'Uncensored Local AI v2.0.0',
+                      'Mochi v1.3 Beta',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
