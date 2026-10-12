@@ -178,6 +178,7 @@ class ChatBubble extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (message.content.isNotEmpty)
                           IconButton(
                             onPressed: () => _copy(context),
                             tooltip: 'Copy message',
