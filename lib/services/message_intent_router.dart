@@ -55,6 +55,13 @@ class MessageIntentRouter {
     }
 
     if (RegExp(
+      r'\b(make|create|design|draw|paint|illustrate)\s+(me\s+)?(a|an|some)\b'
+      r'.*\b(bedroom|room|castle|forest|landscape|portrait|logo|icon|poster|wallpaper|scene|character|artwork)\b',
+    ).hasMatch(text)) {
+      return MochiIntent.generateImage;
+    }
+
+    if (RegExp(
       r'\b(create|make|produce|show\s+me|send\s+me)\b.*\b(image|picture|photo|artwork|illustration|drawing|portrait)\b',
     ).hasMatch(text)) {
       return MochiIntent.generateImage;
