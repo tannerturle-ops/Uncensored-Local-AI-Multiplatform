@@ -1352,7 +1352,7 @@ class _ImageOptionsCardState extends State<_ImageOptionsCard> {
         Text('Monthly image budget (USD)', style: TextStyle(color: context.text)),
         Slider(
           min: 0, max: 50, divisions: 50,
-          value: storage.monthlyImageBudget.clamp(0, 50),
+          value: storage.monthlyImageBudget.clamp(0.0, 50.0).toDouble(),
           activeColor: AppColors.accent,
           label: storage.monthlyImageBudget == 0
               ? 'No limit' : '${storage.monthlyImageBudget.toStringAsFixed(0)}',
