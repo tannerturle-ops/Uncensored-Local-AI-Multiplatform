@@ -49,8 +49,8 @@ class MessageIntentRouter {
       return MochiIntent.generateImage;
     }
 
-    if (RegExp(r'\\b(generate|draw|illustrate|paint|render|sketch)\\b').hasMatch(text) &&
-        !RegExp(r'\\b(summary|report|text|code|list|story|answer)\\b').hasMatch(text)) {
+    if (RegExp(r'\b(generate|draw|illustrate|paint|render|sketch)\b').hasMatch(text) &&
+        !RegExp(r'\b(summary|report|text|code|list|story|answer)\b').hasMatch(text)) {
       return MochiIntent.generateImage;
     }
 
