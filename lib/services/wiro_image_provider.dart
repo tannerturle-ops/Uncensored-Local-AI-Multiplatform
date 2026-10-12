@@ -68,6 +68,7 @@ class WiroImageProvider implements ImageProvider {
           'prompt': request.prompt,
           'maxImages': '1',
           'watermark': 'false',
+          'inputImageUrl': '',
         });
         for (var i = 0; i < request.referenceImages.length; i++) {
           multipart.files.add(http.MultipartFile.fromBytes(
@@ -139,7 +140,7 @@ class WiroImageProvider implements ImageProvider {
           providerId: id,
           modelId: _model,
           prompt: request.prompt,
-          estimatedCostUsd: _model.contains('v5') ? 0.035 : 0.03,
+          estimatedCostUsd: _model.contains('v5') ? 0.035 : 0.04,
         );
       }
       throw TimeoutException(
