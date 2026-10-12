@@ -2,6 +2,10 @@ name: Build unsigned iOS IPA
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ feature/deepseek-cloud ]
+    paths:
+      - '.github/mochi-release.trigger'
 
 concurrency:
   group: mochi-ios-${{ github.ref }}
