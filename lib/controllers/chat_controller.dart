@@ -132,7 +132,8 @@ class ChatController extends GetxController {
     );
     if ((_storage.automaticImageRouting && imageIntent == MochiIntent.generateImage) ||
         editSource != null || imageIntent == MochiIntent.editImage ||
-        (imageBytes != null && imageIntent == MochiIntent.analyzeImage)) {
+        (imageBytes != null && (imageIntent == MochiIntent.analyzeImage ||
+          imageIntent == MochiIntent.ambiguousImage))) {
       isGenerating.value = true;
       imageStatus.value = imageIntent == MochiIntent.analyzeImage && editSource == null
           ? 'Analyzing image…' : (editSource != null || imageIntent == MochiIntent.editImage)
@@ -145,7 +146,8 @@ class ChatController extends GetxController {
           _imageTasks.configure(WiroImageProvider(model: _storage.imageModel));
         }
         final MessageModel imageReply;
-        if (imageBytes != null && imageIntent == MochiIntent.analyzeImage &&
+        if (imageBytes != null &&
+            (imageIntent == MochiIntent.analyzeImage || imageIntent == MochiIntent.ambiguousImage) &&
             editSource == null) {
           final answer = await _vision.describe(
             image: imageBytes, mimeType: imageMimeType ?? 'image/jpeg', prompt: text);
