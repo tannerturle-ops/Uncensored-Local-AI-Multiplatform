@@ -19,6 +19,10 @@ jobs:
           cache: true
       - name: Install Dart dependencies
         run: flutter pub get
+      - name: Verify Mochi image routing tests
+        run: flutter test test/message_intent_router_test.dart
+      - name: Generate custom Mochi icons
+        run: python3 scripts/generate_mochi_icons.py
       - name: Prepare Flutter iOS project
         run: flutter build ios --release --no-codesign || true
       - name: Build iOS with signing explicitly disabled
