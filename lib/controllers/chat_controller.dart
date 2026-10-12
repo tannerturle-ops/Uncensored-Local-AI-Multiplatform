@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:get/get.dart';
 
 import '../models/chat_model.dart';
@@ -11,6 +12,8 @@ import '../services/image_provider.dart';
 import '../services/message_intent_router.dart';
 import '../services/wiro_auth_service.dart';
 import '../services/wiro_image_provider.dart';
+import '../services/image_attachment_service.dart';
+import '../services/vision_service.dart';
 
 class ChatController extends GetxController {
   final LlmService _llm = Get.find<LlmService>();
@@ -18,6 +21,9 @@ class ChatController extends GetxController {
   final ChatStorageService _storage = Get.find<ChatStorageService>();
   final ImageTaskService _imageTasks = ImageTaskService();
   final MessageIntentRouter _intentRouter = const MessageIntentRouter();
+  final ImageAttachmentService _attachments = ImageAttachmentService();
+  final VisionService _vision = VisionService();
+  final imageStatus = ''.obs;
 
   void configureImageProvider(ImageProvider provider) => _imageTasks.configure(provider);
 
@@ -83,13 +89,19 @@ class ChatController extends GetxController {
   }
 
   /// Send a user message and stream AI response.
-  Future<void> sendMessage(String text, {String? modelFilename}) async {
-    if (text.trim().isEmpty || isGenerating.value) return;
+  Future<void> sendMessage(String text, {String? modelFilename, Uint8List? imageBytes, String? imageMimeType, MessageModel? editSource}) async {
+    if ((text.trim().isEmpty && imageBytes == null) || isGenerating.value) return;
     final chat = activeChat;
     if (chat == null) return;
 
     // Add user message
-    final userMsg = MessageModel(role: MessageRole.user, content: text.trim());
+    String? uploadFile;
+    if (imageBytes != null) {
+      uploadFile = await _attachments.save(bytes: imageBytes, mimeType: imageMimeType ?? 'image/jpeg');
+    }
+    final userMsg = MessageModel(role: MessageRole.user, content: text.trim(),
+      imageLocalPath: uploadFile, imageMimeType: imageMimeType,
+      imageId: uploadFile);
     chat.messages.add(userMsg);
     chat.autoTitle();
     chat.updatedAt = DateTime.now();
@@ -106,6 +118,7 @@ class ChatController extends GetxController {
     // another provider. Never synthesize an edit without the source image.
     MessageModel? imageSource;
     for (final candidate in chat.messages.reversed) {
+      if (identical(candidate, userMsg)) continue;
       if (candidate.imageLocalPath != null ||
           candidate.imageBase64 != null) {
         imageSource = candidate;
@@ -115,25 +128,42 @@ class ChatController extends GetxController {
     final imageIntent = _intentRouter.classify(
       text,
       hasRecentImage: imageSource != null,
+      hasAttachedImage: imageBytes != null,
     );
-    if (imageIntent == MochiIntent.generateImage ||
-        imageIntent == MochiIntent.editImage) {
+    if ((_storage.automaticImageRouting && imageIntent == MochiIntent.generateImage) ||
+        editSource != null || imageIntent == MochiIntent.editImage ||
+        (imageBytes != null && imageIntent == MochiIntent.analyzeImage)) {
       isGenerating.value = true;
+      imageStatus.value = imageIntent == MochiIntent.analyzeImage && editSource == null
+          ? 'Analyzing image…' : (editSource != null || imageIntent == MochiIntent.editImage)
+              ? 'Editing image…' : 'Creating image…';
       final requestSerial = ++_generationSerial;
       try {
         // Automatically register Wiro when valid credentials are present.
         // No separate provider selector is required for the first integration.
         if (await WiroAuthService().hasCredentials()) {
-          _imageTasks.configure(WiroImageProvider());
+          _imageTasks.configure(WiroImageProvider(model: _storage.imageModel));
         }
         final MessageModel imageReply;
-        if (imageIntent == MochiIntent.editImage) {
-          if (imageSource == null) {
-            throw StateError('Attach or generate an image before editing it.');
-          }
-          imageReply = await _imageTasks.edit(prompt: text, source: imageSource);
+        if (imageBytes != null && imageIntent == MochiIntent.analyzeImage &&
+            editSource == null) {
+          final answer = await _vision.describe(
+            image: imageBytes, mimeType: imageMimeType ?? 'image/jpeg', prompt: text);
+          imageReply = MessageModel(role: MessageRole.assistant, content: answer);
         } else {
-          imageReply = await _imageTasks.create(text);
+          final estimatedCost = _storage.imageModel.contains('v5') ? 0.035 : 0.03;
+          if (!_storage.canSpendOnImage(estimatedCost)) {
+            throw StateError('Your monthly image budget has been reached. Adjust it in Settings.');
+          }
+          final source = editSource ?? (imageBytes != null ? userMsg : imageSource);
+          if (editSource != null || imageIntent == MochiIntent.editImage) {
+            if (source == null) throw StateError('Select or attach an image before editing.');
+            imageReply = await _imageTasks.edit(prompt: text, source: source);
+          } else {
+            imageReply = await _imageTasks.create(text);
+          }
+          // Local estimates; paid Wiro requests may incur charges even on failure.
+          _storage.recordImageSpend(estimatedCost);
         }
         if (requestSerial == _generationSerial) {
           chat.messages.add(imageReply);
@@ -148,6 +178,7 @@ class ChatController extends GetxController {
       } finally {
         if (requestSerial == _generationSerial) {
           isGenerating.value = false;
+          imageStatus.value = '';
         }
         await _storage.saveChat(chat);
         chats.refresh();
@@ -275,6 +306,7 @@ class ChatController extends GetxController {
     _generationDone = null;
     _llm.stopGeneration();
     isGenerating.value = false;
+    imageStatus.value = '';
     streamedResponse.value = '';
   }
 
