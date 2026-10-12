@@ -153,7 +153,7 @@ class ChatController extends GetxController {
             image: imageBytes, mimeType: imageMimeType ?? 'image/jpeg', prompt: text);
           imageReply = MessageModel(role: MessageRole.assistant, content: answer);
         } else {
-          final estimatedCost = _storage.imageModel.contains('v5') ? 0.035 : 0.03;
+          final estimatedCost = _storage.imageModel.contains('v5') ? 0.035 : 0.04;
           if (!_storage.canSpendOnImage(estimatedCost)) {
             throw StateError('Your monthly image budget has been reached. Adjust it in Settings.');
           }
