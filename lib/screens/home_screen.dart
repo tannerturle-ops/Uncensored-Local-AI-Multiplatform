@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 
@@ -27,6 +29,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final _llm = Get.find<LlmService>();
   final _themeCtrl = Get.find<ThemeController>();
   final _msgController = TextEditingController();
+  final _picker = ImagePicker();
+  Uint8List? _pendingPhoto;
+  String? _pendingMime;
+  String? _pendingPhotoName;
   final _scrollController = ScrollController();
   bool _sidebarOpen = true;
   bool _autoScrollToBottom = true;
@@ -94,7 +100,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _send() {
     final text = _msgController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _pendingPhoto == null) return;
+    final photo = _pendingPhoto;
+    final mime = _pendingMime;
+    setState(() {
+      _pendingPhoto = null;
+      _pendingMime = null;
+      _pendingPhotoName = null;
+    });
 
     if (_chatCtrl.activeChat == null) {
       _chatCtrl.newChat();
@@ -106,8 +119,73 @@ class _HomeScreenState extends State<HomeScreen> {
     _chatCtrl.sendMessage(
       text,
       modelFilename: _modelCtrl.selectedModelFilename.value,
+      imageBytes: photo,
+      imageMimeType: mime,
     );
     _scrollToBottom(force: true);
+  }
+
+  Future<void> _attachPhoto(ImageSource source) async {
+    try {
+      final photo = await _picker.pickImage(
+        source: source, maxWidth: 2048, imageQuality: 88);
+      if (photo == null) return;
+      final bytes = await photo.readAsBytes();
+      if (bytes.length > 25 * 1024 * 1024) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image must be under 25 MB.')));
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _pendingPhoto = bytes;
+        _pendingPhotoName = photo.name;
+        final n = photo.name.toLowerCase();
+        _pendingMime = n.endsWith('.png') ? 'image/png'
+            : n.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+      });
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open photo: $error')));
+    }
+  }
+
+  Future<void> _showAttachmentActions() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Choose Photo'),
+            onTap: () {
+              Navigator.pop(sheet);
+              _attachPhoto(ImageSource.gallery);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_outlined),
+            title: const Text('Take Photo'),
+            onTap: () {
+              Navigator.pop(sheet);
+              _attachPhoto(ImageSource.camera);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_rounded),
+            title: const Text('Generate Image'),
+            onTap: () {
+              Navigator.pop(sheet);
+              _msgController.text = 'Generate an image of ';
+              _msgController.selection = TextSelection.collapsed(
+                offset: _msgController.text.length);
+            },
+          ),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -999,9 +1077,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 controller: _scrollController,
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                itemCount: chat.messages.length,
+                itemCount: chat.messages.length + (_chatCtrl.isGenerating.value &&
+                    _chatCtrl.imageStatus.value.isNotEmpty ? 1 : 0),
                 itemBuilder: (context, index) {
-                  final msg = chat.messages[index];
+                  if (index == chat.messages.length) {
+                  return TypingIndicator(label: _chatCtrl.imageStatus.value);
+                }
+                final msg = chat.messages[index];
                   final isLastAi =
                       msg.isAssistant && index == chat.messages.length - 1;
                   // Thinking is outside the message bubble until text arrives.
@@ -1072,78 +1154,85 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.bgInput,
-          border: Border.all(color: context.border),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(context.isDark ? 0.15 : 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_pendingPhoto != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8, left: 8),
+              child: Stack(children: [
+                ClipRRect(borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(_pendingPhoto!, width: 90, height: 90,
+                    fit: BoxFit.cover)),
+                Positioned(top: 0, right: 0,
+                  child: IconButton(
+                    onPressed: () => setState(() {
+                      _pendingPhoto = null;
+                      _pendingMime = null;
+                      _pendingPhotoName = null;
+                    }),
+                    icon: const Icon(Icons.cancel_rounded),
+                    tooltip: 'Remove photo',
+                  )),
+              ]),
             ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Text field
-            Expanded(
-              child: TextField(
-                controller: _msgController,
-                maxLines: 5,
-                minLines: 1,
-                textInputAction: TextInputAction.newline,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: context.text,
-                  height: 1.4,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Ask anything...',
-                  hintStyle: TextStyle(color: context.textD),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.fromLTRB(24, 14, 8, 14),
-                ),
-                onSubmitted: (_) => _send(),
-                onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+          ),
+        Container(
+          decoration: BoxDecoration(
+            color: context.bgInput,
+            border: Border.all(color: context.border, width: 1),
+            borderRadius: BorderRadius.circular(36),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12),
+              blurRadius: 15, offset: const Offset(0, 5))],
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Padding(padding: const EdgeInsets.only(left: 5, bottom: 4),
+              child: IconButton(
+                onPressed: _showAttachmentActions,
+                tooltip: 'Add photo or create image',
+                icon: Icon(Icons.add_rounded, size: 29, color: context.text))),
+            Expanded(child: TextField(
+              controller: _msgController,
+              minLines: 1, maxLines: 5,
+              textInputAction: TextInputAction.newline,
+              onChanged: (_) => setState(() {}),
+              style: TextStyle(fontSize: 15, height: 1.4, color: context.text),
+              decoration: InputDecoration(
+                hintText: 'Ask Mochi…',
+                hintStyle: TextStyle(color: context.textD),
+                border: InputBorder.none, enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 3, vertical: 17),
               ),
-            ),
-
-            // iOS keyboard can be dismissed without sending or deleting draft text.
+              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            )),
             if (MediaQuery.viewInsetsOf(context).bottom > 0)
               IconButton(
-                icon: Icon(Icons.keyboard_hide_rounded, color: context.textM),
                 tooltip: 'Hide keyboard',
+                icon: Icon(Icons.keyboard_hide_rounded, size: 20, color: context.textM),
                 onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
               ),
-            // Send / Stop
-            Padding(
-              padding: const EdgeInsets.only(right: 8, bottom: 6),
-              child: Obx(
-                () => _chatCtrl.isGenerating.value
-                    ? _circleButton(
-                        icon: Icons.stop_rounded,
-                        color: AppColors.red,
-                        onTap: _chatCtrl.stopGeneration,
-                        tooltip: 'Stop',
-                      )
-                    : _circleButton(
-                        icon: Icons.arrow_upward_rounded,
-                        color: AppColors.accent,
-                        onTap: _send,
-                        tooltip: 'Send',
-                      ),
-              ),
-            ),
-          ],
+            Padding(padding: const EdgeInsets.only(bottom: 5),
+              child: IconButton(
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Voice recording is coming in a future update.'))),
+                tooltip: 'Microphone (coming soon)',
+                icon: Icon(Icons.mic_none_rounded, color: context.textM, size: 23),
+              )),
+            Padding(padding: const EdgeInsets.only(right: 6, bottom: 6),
+              child: Obx(() => _chatCtrl.isGenerating.value
+                  ? _circleButton(
+                      icon: Icons.stop_rounded, color: AppColors.red,
+                      onTap: _chatCtrl.stopGeneration, tooltip: 'Stop')
+                  : _circleButton(
+                      icon: Icons.arrow_upward_rounded, color: AppColors.accent,
+                      onTap: _send, tooltip: 'Send'))),
+          ]),
         ),
-      ),
+      ]),
     );
   }
 
