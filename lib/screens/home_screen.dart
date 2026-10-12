@@ -13,6 +13,7 @@ import '../services/llm_service.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/typing_indicator.dart';
+import '../models/message_model.dart';
 import 'model_library_screen.dart';
 import 'settings_screen.dart';
 
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Uint8List? _pendingPhoto;
   String? _pendingMime;
   String? _pendingPhotoName;
+  MessageModel? _selectedEditImage;
   final _scrollController = ScrollController();
   bool _sidebarOpen = true;
   bool _autoScrollToBottom = true;
@@ -101,9 +103,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void _send() {
     final text = _msgController.text.trim();
     if (text.isEmpty && _pendingPhoto == null) return;
+    if (_chatCtrl.isGenerating.value) return;
     final photo = _pendingPhoto;
     final mime = _pendingMime;
+    final editSource = _selectedEditImage;
     setState(() {
+      _selectedEditImage = null;
       _pendingPhoto = null;
       _pendingMime = null;
       _pendingPhotoName = null;
@@ -121,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
       modelFilename: _modelCtrl.selectedModelFilename.value,
       imageBytes: photo,
       imageMimeType: mime,
+      editSource: editSource,
     );
     _scrollToBottom(force: true);
   }
@@ -1095,7 +1101,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: TypingIndicator(),
                     );
                   }
-                  return ChatBubble(message: msg, showSpeed: isLastAi);
+                  return ChatBubble(
+                    message: msg,
+                    showSpeed: isLastAi,
+                    onEditImage: msg.imageLocalPath != null || msg.imageBase64 != null
+                      ? () {
+                          setState(() => _selectedEditImage = msg);
+                          _msgController.text = '';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Image selected. Describe what to change.')));
+                        }
+                      : null,
+                    onRetryImage: msg.isAssistant &&
+                        (msg.imageLocalPath != null || msg.imageBase64 != null)
+                      ? () {
+                          final prompt = msg.imagePrompt ?? '';
+                          if (prompt.trim().isEmpty) return;
+                          _msgController.text = prompt;
+                          _send();
+                        }
+                      : null,
+                  );
                 },
               ),
             );
@@ -1157,6 +1183,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_selectedEditImage != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              const Icon(Icons.edit_outlined, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Editing selected image')),
+              IconButton(
+                onPressed: () => setState(() => _selectedEditImage = null),
+                icon: const Icon(Icons.close_rounded), tooltip: 'Cancel edit'),
+            ]),
+          ),
         if (_pendingPhoto != null)
           Align(
             alignment: Alignment.centerLeft,
