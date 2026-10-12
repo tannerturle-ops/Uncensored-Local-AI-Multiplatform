@@ -89,7 +89,7 @@ def save_png(path, n):
     def chunk(name, data):
         return (struct.pack('>I',len(data))+name+data+
                 struct.pack('>I',zlib.crc32(name+data)&0xffffffff))
-    payload = (b'\\x89PNG\\r\\n\\x1a\\n'
+    payload = (b'\x89PNG\r\n\x1a\n'
         +chunk(b'IHDR',struct.pack('>2I5B',n,n,8,2,0,0,0))
         +chunk(b'IDAT',zlib.compress(b''.join(rows),6))
         +chunk(b'IEND',b''))
