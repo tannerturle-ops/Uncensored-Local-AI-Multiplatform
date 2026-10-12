@@ -96,6 +96,38 @@ class ChatStorageService extends GetxService {
   set localApiAllInterfaces(bool value) =>
       _settingsBox.put('local_api_all_interfaces', value);
 
+  // ── Images & Media ─────────────────────────────────────────
+  String get imageProvider =>
+      _settingsBox.get('image_provider', defaultValue: 'wiro') as String;
+  set imageProvider(String value) => _settingsBox.put('image_provider', value);
+
+  String get imageModel =>
+      _settingsBox.get('image_model', defaultValue: 'seedream-v5-lite-uncensored') as String;
+  set imageModel(String value) => _settingsBox.put('image_model', value);
+
+  bool get automaticImageRouting =>
+      _settingsBox.get('auto_image_routing', defaultValue: true) as bool;
+  set automaticImageRouting(bool value) =>
+      _settingsBox.put('auto_image_routing', value);
+
+  double get monthlyImageBudget =>
+      (_settingsBox.get('image_budget_usd', defaultValue: 10.0) as num).toDouble();
+  set monthlyImageBudget(double value) =>
+      _settingsBox.put('image_budget_usd', value);
+
+  double get thisMonthImageSpend {
+    final month = DateTime.now().toIso8601String().substring(0, 7);
+    return (_settingsBox.get('image_spend_$month', defaultValue: 0.0) as num).toDouble();
+  }
+
+  bool canSpendOnImage(double amount) =>
+      monthlyImageBudget <= 0 || thisMonthImageSpend + amount <= monthlyImageBudget;
+
+  void recordImageSpend(double amount) {
+    final month = DateTime.now().toIso8601String().substring(0, 7);
+    _settingsBox.put('image_spend_$month', thisMonthImageSpend + amount);
+  }
+
   // ── Hardware Settings ──────────────────────────────────────
 
   int get gpuLayers =>
