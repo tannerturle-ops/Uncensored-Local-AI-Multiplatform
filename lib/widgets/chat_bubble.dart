@@ -13,11 +13,15 @@ import 'message_image.dart';
 class ChatBubble extends StatelessWidget {
   final MessageModel message;
   final bool showSpeed;
+  final VoidCallback? onEditImage;
+  final VoidCallback? onRetryImage;
 
   const ChatBubble({
     super.key,
     required this.message,
     this.showSpeed = false,
+    this.onEditImage,
+    this.onRetryImage,
   });
 
   Future<void> _copy(BuildContext context) async {
@@ -97,7 +101,7 @@ class ChatBubble extends StatelessWidget {
                       children: [
                         if (message.imageLocalPath != null ||
                             message.imageBase64 != null) ...[
-                          MessageImage(message: message),
+                          MessageImage(message: message, onEdit: onEditImage, onRetry: onRetryImage),
                           if (message.content.isNotEmpty)
                             const SizedBox(height: 10),
                         ],
