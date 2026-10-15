@@ -1135,10 +1135,59 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            Text('Test actual text generation (small API request)',
+              style: TextStyle(fontSize: 12, color: context.textM)),
+            Wrap(spacing: 8, children: [
+              OutlinedButton(
+                onPressed: !_hasKey || _saving || _testing ? null
+                  : () => _testModel(DeepSeekService.chatModel),
+                child: const Text('Test Flash'),
+              ),
+              OutlinedButton(
+                onPressed: !_hasKey || _saving || _testing ? null
+                  : () => _testModel(DeepSeekService.reasonerModel),
+                child: const Text('Test V4 Pro'),
+              ),
+            ]),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _testModel(String model) async {
+    setState(() => _testing = true);
+    try {
+      final result = await _service.testTextGeneration(model);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('DeepSeek generation succeeded'),
+          content: SelectableText(result),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK')),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('$model generation failed'),
+          content: SelectableText('$error'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK')),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
   }
 }
 
