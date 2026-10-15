@@ -165,6 +165,8 @@ class _SettingsBody extends StatelessWidget {
               _sectionHeader(context, 'DeepSeek Cloud API'),
               const SizedBox(height: 8),
               const _DeepSeekKeyCard(),
+              const SizedBox(height: 12),
+              _DeepSeekThinkingCard(storage: storage),
               const SizedBox(height: 28),
 
               _sectionHeader(context, 'Images & Media · Wiro AI'),
@@ -1114,13 +1116,16 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
                   onPressed: !_hasKey || _saving || _testing ? null : () async {
                     setState(() => _testing = true);
                     try {
-                      await _service.streamCompletion(
-                        model: DeepSeekService.chatModel,
-                        messages: [{'role': 'user', 'content': 'Reply with OK.'}],
-                      ).first.timeout(const Duration(seconds: 45));
-                      Get.snackbar('Connected', 'DeepSeek API is responding.', snackPosition: SnackPosition.BOTTOM);
-                    } catch (_) {
-                      Get.snackbar('Connection failed', 'Check network, API key, or DeepSeek account access.', snackPosition: SnackPosition.BOTTOM);
+                      final result = await _service.testAuthentication();
+                      if (!mounted) return;
+                      Get.snackbar('DeepSeek authentication successful', result,
+                        snackPosition: SnackPosition.BOTTOM,
+                        duration: const Duration(seconds: 5));
+                    } catch (error) {
+                      if (!mounted) return;
+                      Get.snackbar('DeepSeek connection test failed', '$error',
+                        snackPosition: SnackPosition.BOTTOM,
+                        duration: const Duration(seconds: 7));
                     } finally {
                       if (mounted) setState(() => _testing = false);
                     }
@@ -1137,6 +1142,55 @@ class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
   }
 }
 
+
+
+class _DeepSeekThinkingCard extends StatefulWidget {
+  const _DeepSeekThinkingCard({required this.storage});
+  final ChatStorageService storage;
+
+  @override
+  State<_DeepSeekThinkingCard> createState() => _DeepSeekThinkingCardState();
+}
+
+class _DeepSeekThinkingCardState extends State<_DeepSeekThinkingCard> {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('DeepSeek thinking mode',
+              style: TextStyle(color: context.text, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text('Choose how much reasoning DeepSeek does before replying. '
+                 'High is DeepSeek\'s default. This applies to new messages '
+                 'using DeepSeek Flash or V4 Pro.',
+              style: TextStyle(fontSize: 12, color: context.textM)),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: widget.storage.deepseekReasoningEffort,
+              decoration: const InputDecoration(
+                labelText: 'Thinking effort', border: OutlineInputBorder()),
+              items: const [
+                DropdownMenuItem(value: 'off', child: Text('Off · faster replies')),
+                DropdownMenuItem(value: 'low', child: Text('Low · shorter reasoning')),
+                DropdownMenuItem(value: 'high', child: Text('High · default')),
+                DropdownMenuItem(value: 'max', child: Text('Max · deeper reasoning')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => widget.storage.deepseekReasoningEffort = value);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _WiroKeyCard extends StatefulWidget {
   const _WiroKeyCard();
