@@ -1578,7 +1578,7 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
         children: [
           Expanded(
             child: Text(
-              '${_controller.text.characters.length} characters',
+              '${_controller.text.length} characters',
               style: TextStyle(fontSize: 12, color: context.textM),
             ),
           ),
