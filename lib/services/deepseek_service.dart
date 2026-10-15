@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -65,11 +66,31 @@ class DeepSeekService {
       final response = await client.send(req)
           .timeout(const Duration(seconds: 45));
       if (response.statusCode != 200) {
-        throw StateError('DeepSeek request failed (HTTP ${response.statusCode}). Check API key, model access, or connection.');
+        // Avoid exposing API keys or user prompts in failure messages.
+        final reason = switch (response.statusCode) {
+          400 => 'The selected DeepSeek model or request was rejected.',
+          401 => 'Your DeepSeek API key was rejected.',
+          402 => 'Your DeepSeek account may need more API credit.',
+          403 => 'Access to this model was denied.',
+          404 => 'The DeepSeek model or endpoint was not found.',
+          429 => 'DeepSeek is rate-limiting requests.',
+          >= 500 => 'DeepSeek is temporarily unavailable.',
+          _ => 'Please check your API key and connection.',
+        };
+        throw StateError('DeepSeek HTTP ${response.statusCode}: $reason');
       }
+      // The connect timeout above does not protect against a server that
+      // opens an SSE connection but then sends no more data.
+      var receivedText = false;
       await for (final line in response.stream
           .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
+          .transform(const LineSplitter())
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: (sink) => sink.addError(
+              TimeoutException('No data received from DeepSeek for 60 seconds. '
+                'Please retry or select another model.')),
+          )) {
         if (!line.startsWith('data:')) continue;
         final data = line.substring(5).trim();
         if (data == '[DONE]') break;
@@ -80,8 +101,17 @@ class DeepSeekService {
         final delta = (choices.first as Map<String, dynamic>)['delta']
             as Map<String, dynamic>?;
         final part = delta?['content'];
-        if (part is String && part.isNotEmpty) yield part;
+        if (part is String && part.isNotEmpty) {
+          receivedText = true;
+          yield part;
+        }
       }
+      if (!receivedText) {
+        throw StateError('DeepSeek returned no text. Check your selected model, '
+          'API access, or try again.');
+      }
+    } on TimeoutException catch (error) {
+      throw StateError('DeepSeek timed out: ${error.message}');
     } finally {
       client.close();
     }
