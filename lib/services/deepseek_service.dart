@@ -31,6 +31,38 @@ class DeepSeekService {
 
   Future<void> clearKey() => _storage.delete(key: _keyName);
 
+  /// Checks key/account access without invoking a chat model or streaming.
+  /// This distinguishes authentication/connectivity from model-generation failures.
+  Future<String> testAuthentication() async {
+    final key = await _storage.read(key: _keyName);
+    if (key == null || key.trim().isEmpty) {
+      throw StateError('No DeepSeek API key saved on this device.');
+    }
+    final client = http.Client();
+    try {
+      final response = await client.get(
+        Uri.parse('https://api.deepseek.com/models'),
+        headers: {'Authorization': 'Bearer $key'},
+      ).timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200) {
+        return 'DeepSeek key accepted. Model generation was not tested.';
+      }
+      final explanation = switch (response.statusCode) {
+        401 => 'Invalid or expired API key.',
+        402 => 'DeepSeek billing or credits issue.',
+        403 => 'This key does not have permission to access DeepSeek.',
+        429 => 'Too many requests; try again later.',
+        >= 500 => 'DeepSeek server error. Try again later.',
+        _ => 'The DeepSeek API rejected this request.',
+      };
+      throw StateError('HTTP ${response.statusCode}: $explanation');
+    } on TimeoutException {
+      throw StateError('Connection timed out. Check your network or VPN.');
+    } finally {
+      client.close();
+    }
+  }
+
   /// Streams text deltas from DeepSeek's Server-Sent Events API.
   /// Cancelling the subscription closes the underlying HTTP client.
   Stream<String> streamCompletion({
@@ -38,6 +70,7 @@ class DeepSeekService {
     required List<Map<String, String>> messages,
     String? systemPrompt,
     double temperature = 0.7,
+    String reasoningEffort = 'high',
   }) async* {
     final key = await _storage.read(key: _keyName);
     if (key == null || key.isEmpty) {
@@ -61,10 +94,10 @@ class DeepSeekService {
         'model': model,
         'messages': payload,
         'stream': true,
-        // DeepSeek V4 Pro defaults to a high-effort reasoning pass, which
-        // keeps ordinary chats on "Thinking" with no visible text.
-        // Disable that pass for responsive everyday conversations.
-        'thinking': {'type': 'disabled'},
+        'thinking': {'type': reasoningEffort == 'off' ? 'disabled' : 'enabled'},
+        if (reasoningEffort != 'off')
+          'reasoning_effort': {'low', 'high', 'max'}.contains(reasoningEffort)
+              ? reasoningEffort : 'high',
         'temperature': temperature,
       });
       final response = await client.send(req)
