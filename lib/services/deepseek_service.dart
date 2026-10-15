@@ -61,6 +61,10 @@ class DeepSeekService {
         'model': model,
         'messages': payload,
         'stream': true,
+        // DeepSeek V4 Pro defaults to a high-effort reasoning pass, which
+        // keeps ordinary chats on "Thinking" with no visible text.
+        // Disable that pass for responsive everyday conversations.
+        'thinking': {'type': 'disabled'},
         'temperature': temperature,
       });
       final response = await client.send(req)
