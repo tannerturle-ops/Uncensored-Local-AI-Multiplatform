@@ -63,6 +63,67 @@ class DeepSeekService {
     }
   }
 
+  /// Tiny non-streaming diagnostic. Unlike the key check, this tests
+  /// real model generation and reports failures without exposing secrets.
+  Future<String> testTextGeneration(String model) async {
+    if (model != chatModel && model != reasonerModel) {
+      throw ArgumentError('Unsupported DeepSeek test model.');
+    }
+    final key = await _storage.read(key: _keyName);
+    if (key == null || key.trim().isEmpty) {
+      throw StateError('No DeepSeek API key saved.');
+    }
+    final client = http.Client();
+    try {
+      final response = await client.post(
+        Uri.parse('https://api.deepseek.com/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer $key',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': model,
+          'messages': [
+            {'role': 'user', 'content': 'Reply with exactly OK.'},
+          ],
+          'stream': false,
+          'thinking': {'type': 'disabled'},
+          'max_tokens': 32,
+        }),
+      ).timeout(const Duration(seconds: 75));
+      if (response.statusCode != 200) {
+        String detail = '';
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final failure = data['error'];
+          if (failure is Map) {
+            detail = (failure['message'] ?? failure['code'] ?? '').toString();
+          }
+        } catch (_) {}
+        // Use a bounded server message, never reflect credentials.
+        if (detail.length > 240) detail = detail.substring(0, 240);
+        if (detail.toLowerCase().contains(key.toLowerCase())) detail = '';
+        throw StateError('DeepSeek $model returned HTTP ${response.statusCode}'
+            '${detail.isEmpty ? '' : ': $detail'}');
+      }
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = data['choices'];
+      if (choices is! List || choices.isEmpty) {
+        throw StateError('$model returned HTTP 200 but no choices.');
+      }
+      final message = (choices.first as Map)['message'];
+      final answer = message is Map ? message['content'] : null;
+      if (answer is! String || answer.trim().isEmpty) {
+        throw StateError('$model returned HTTP 200 but empty content.');
+      }
+      return '$model generated: ${answer.trim()}';
+    } on TimeoutException {
+      throw StateError('$model generation timed out after 75 seconds.');
+    } finally {
+      client.close();
+    }
+  }
+
   /// Streams text deltas from DeepSeek's Server-Sent Events API.
   /// Cancelling the subscription closes the underlying HTTP client.
   Stream<String> streamCompletion({
