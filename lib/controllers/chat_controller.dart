@@ -215,6 +215,7 @@ class ChatController extends GetxController {
           messages: history,
           systemPrompt: prompt,
           temperature: temperature.value,
+          reasoningEffort: _storage.deepseekReasoningEffort,
         );
       } else {
         stream = _llm.generate(
