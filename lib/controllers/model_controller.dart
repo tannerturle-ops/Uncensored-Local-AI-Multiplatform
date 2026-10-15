@@ -10,6 +10,7 @@ import '../services/model_manager.dart';
 import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/log_service.dart';
+import '../services/deepseek_service.dart';
 
 class ModelController extends GetxController {
   final ModelManager _manager = Get.find<ModelManager>();
@@ -161,6 +162,13 @@ class ModelController extends GetxController {
       loadingProgress.value = 0.0;
       loadingModelFilename.value = null;
     }
+  }
+
+  /// Select DeepSeek without loading or unloading any GGUF file.
+  void selectCloudModel(String id) {
+    if (!DeepSeekService.isCloud(id)) return;
+    selectedModelFilename.value = id;
+    _storage.lastModelId = id;
   }
 
   /// Cancel an in-progress model load.

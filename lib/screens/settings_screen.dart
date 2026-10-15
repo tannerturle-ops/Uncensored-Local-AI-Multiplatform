@@ -10,6 +10,9 @@ import '../services/local_api_server_service.dart';
 import '../services/model_manager.dart';
 import '../services/background_optimizer_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/deepseek_service.dart';
+import '../services/wiro_auth_service.dart';
+import '../services/vision_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   /// When true, no Scaffold — just the body content for embedding in tabs.
@@ -158,6 +161,23 @@ class _SettingsBody extends StatelessWidget {
 
               const SizedBox(height: 28),
 
+              // ── Optional DeepSeek cloud provider ─────────────────────
+              _sectionHeader(context, 'DeepSeek Cloud API'),
+              const SizedBox(height: 8),
+              const _DeepSeekKeyCard(),
+              const SizedBox(height: 12),
+              _DeepSeekThinkingCard(storage: storage),
+              const SizedBox(height: 28),
+
+              _sectionHeader(context, 'Images & Media · Wiro AI'),
+              const SizedBox(height: 8),
+              const _WiroKeyCard(),
+              const SizedBox(height: 12),
+              _ImageOptionsCard(storage: storage),
+              const SizedBox(height: 12),
+              const _VisionKeyCard(),
+              const SizedBox(height: 28),
+
               // ── System Prompt ─────────────────────────────
               _sectionHeader(context, 'Global System Prompt'),
               const SizedBox(height: 8),
@@ -166,42 +186,7 @@ class _SettingsBody extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: context.textD),
               ),
               const SizedBox(height: 12),
-              Obx(
-                () => TextField(
-                  controller:
-                      TextEditingController(text: chatCtrl.systemPrompt.value)
-                        ..selection = TextSelection.fromPosition(
-                          TextPosition(
-                            offset: chatCtrl.systemPrompt.value.length,
-                          ),
-                        ),
-                  maxLines: 4,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: context.text,
-                    height: 1.5,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'e.g. You are a helpful assistant...',
-                    hintStyle: TextStyle(color: context.textD),
-                    filled: true,
-                    fillColor: context.bgInput,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: context.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: context.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.accent),
-                    ),
-                  ),
-                  onChanged: (v) => chatCtrl.setGlobalSystemPrompt(v),
-                ),
-              ),
+              _SystemPromptEditor(chatCtrl: chatCtrl),
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
@@ -655,7 +640,7 @@ class _SettingsBody extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      'Uncensored Local AI v2.0.0',
+                      'Mochi v1.3 Beta',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -1044,3 +1029,669 @@ class _HardwareSettingsCardState extends State<_HardwareSettingsCard> {
   }
 }
 
+
+/// API key is never added to Hive, chat transcripts, or the repository.
+class _DeepSeekKeyCard extends StatefulWidget {
+  const _DeepSeekKeyCard();
+  @override
+  State<_DeepSeekKeyCard> createState() => _DeepSeekKeyCardState();
+}
+
+class _DeepSeekKeyCardState extends State<_DeepSeekKeyCard> {
+  final _service = DeepSeekService();
+  final _field = TextEditingController();
+  bool _hasKey = false;
+  bool _saving = false;
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final exists = await _service.hasKey();
+    if (mounted) setState(() => _hasKey = exists);
+  }
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_hasKey ? 'API key saved on this device' : 'No API key configured',
+              style: TextStyle(color: context.text)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _field,
+              onChanged: (_) => setState(() {}),
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'DeepSeek API key',
+                hintText: 'Enter a new key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Cloud chats are sent to DeepSeek. Local GGUF chats stay on-device.',
+              style: TextStyle(fontSize: 12, color: context.textD)),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: _saving || _testing || _field.text.trim().isEmpty ? null : () async {
+                    setState(() => _saving = true);
+                    try {
+                      await _service.saveKey(_field.text);
+                      _field.clear();
+                      await _refresh();
+                      Get.snackbar('Saved', 'DeepSeek key saved securely on this device.', snackPosition: SnackPosition.BOTTOM);
+                    } catch (_) {
+                      Get.snackbar('Save failed', 'Could not store the API key.', snackPosition: SnackPosition.BOTTOM);
+                    } finally {
+                      if (mounted) setState(() => _saving = false);
+                    }
+                  },
+                  child: const Text('Save key'),
+                ),
+                TextButton(
+                  onPressed: !_hasKey || _saving || _testing ? null : () async {
+                    await _service.clearKey();
+                    await _refresh();
+                  },
+                  child: const Text('Remove key'),
+                ),
+                TextButton.icon(
+                  onPressed: !_hasKey || _saving || _testing ? null : () async {
+                    setState(() => _testing = true);
+                    try {
+                      final result = await _service.testAuthentication();
+                      if (!mounted) return;
+                      Get.snackbar('DeepSeek authentication successful', result,
+                        snackPosition: SnackPosition.BOTTOM,
+                        duration: const Duration(seconds: 5));
+                    } catch (error) {
+                      if (!mounted) return;
+                      Get.snackbar('DeepSeek connection test failed', '$error',
+                        snackPosition: SnackPosition.BOTTOM,
+                        duration: const Duration(seconds: 7));
+                    } finally {
+                      if (mounted) setState(() => _testing = false);
+                    }
+                  },
+                  icon: _testing ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering_rounded, size: 16),
+                  label: const Text('Test connection'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text('Test actual text generation (small API request)',
+              style: TextStyle(fontSize: 12, color: context.textM)),
+            Wrap(spacing: 8, children: [
+              OutlinedButton(
+                onPressed: !_hasKey || _saving || _testing ? null
+                  : () => _testModel(DeepSeekService.chatModel),
+                child: const Text('Test Flash'),
+              ),
+              OutlinedButton(
+                onPressed: !_hasKey || _saving || _testing ? null
+                  : () => _testModel(DeepSeekService.reasonerModel),
+                child: const Text('Test V4 Pro'),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _testModel(String model) async {
+    setState(() => _testing = true);
+    try {
+      final result = await _service.testTextGeneration(model);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('DeepSeek generation succeeded'),
+          content: SelectableText(result),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK')),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('$model generation failed'),
+          content: SelectableText('$error'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK')),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+}
+
+
+
+class _DeepSeekThinkingCard extends StatefulWidget {
+  const _DeepSeekThinkingCard({required this.storage});
+  final ChatStorageService storage;
+
+  @override
+  State<_DeepSeekThinkingCard> createState() => _DeepSeekThinkingCardState();
+}
+
+class _DeepSeekThinkingCardState extends State<_DeepSeekThinkingCard> {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('DeepSeek thinking mode',
+              style: TextStyle(color: context.text, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text('Choose how much reasoning DeepSeek does before replying. '
+                 'High is DeepSeek\'s default. This applies to new messages '
+                 'using DeepSeek Flash or V4 Pro.',
+              style: TextStyle(fontSize: 12, color: context.textM)),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: widget.storage.deepseekReasoningEffort,
+              decoration: const InputDecoration(
+                labelText: 'Thinking effort', border: OutlineInputBorder()),
+              items: const [
+                DropdownMenuItem(value: 'off', child: Text('Off · faster replies')),
+                DropdownMenuItem(value: 'low', child: Text('Low · shorter reasoning')),
+                DropdownMenuItem(value: 'high', child: Text('High · default')),
+                DropdownMenuItem(value: 'max', child: Text('Max · deeper reasoning')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => widget.storage.deepseekReasoningEffort = value);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WiroKeyCard extends StatefulWidget {
+  const _WiroKeyCard();
+
+  @override
+  State<_WiroKeyCard> createState() => _WiroKeyCardState();
+}
+
+class _WiroKeyCardState extends State<_WiroKeyCard> {
+  final _service = WiroAuthService();
+  final _keyField = TextEditingController();
+  final _secretField = TextEditingController();
+  bool _saved = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final saved = await _service.hasCredentials();
+    if (mounted) setState(() => _saved = saved);
+  }
+
+  @override
+  void dispose() {
+    _keyField.dispose();
+    _secretField.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.saveCredentials(
+        apiKey: _keyField.text,
+        secretKey: _secretField.text,
+      );
+      _keyField.clear();
+      _secretField.clear();
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wiro credentials saved securely.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save Wiro keys: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _test() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.testConnection();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wiro connection verified. No image was generated.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connection test failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _service.clearCredentials();
+      await _refresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_saved ? 'Wiro credentials saved on this device'
+                : 'Connect a Wiro project for image generation and editing.',
+              style: TextStyle(color: context.text, fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _keyField,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Wiro API Key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _secretField,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Wiro Secret Key',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Authentication: signed HMAC-SHA256 requests. '
+                'The secret key is stored on your device and is not committed to the app repository.',
+              style: TextStyle(fontSize: 12, color: context.textD)),
+            const SizedBox(height: 12),
+            Text('Image model: Seedream 5.0 Lite Uncensored (planned default)',
+              style: TextStyle(fontSize: 12, color: context.textM)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                OutlinedButton(
+                  onPressed: _busy || _keyField.text.trim().isEmpty ||
+                      _secretField.text.trim().isEmpty ? null : _save,
+                  child: const Text('Save keys'),
+                ),
+                OutlinedButton(
+                  onPressed: _busy || !_saved ? null : _test,
+                  child: const Text('Test connection'),
+                ),
+                TextButton(
+                  onPressed: _busy || !_saved ? null : _remove,
+                  child: const Text('Remove keys'),
+                ),
+              ],
+            ),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _ImageOptionsCard extends StatefulWidget {
+  const _ImageOptionsCard({required this.storage});
+  final ChatStorageService storage;
+  @override
+  State<_ImageOptionsCard> createState() => _ImageOptionsCardState();
+}
+class _ImageOptionsCardState extends State<_ImageOptionsCard> {
+  @override
+  Widget build(BuildContext context) {
+    final storage = widget.storage;
+    return Card(child: Padding(padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Image generation', style: TextStyle(
+          fontSize: 15, fontWeight: FontWeight.w600, color: context.text)),
+        SwitchListTile(
+          title: const Text('Automatic image routing'),
+          subtitle: const Text('Generate images when requested in regular chat'),
+          activeThumbColor: AppColors.accent,
+          contentPadding: EdgeInsets.zero,
+          value: storage.automaticImageRouting,
+          onChanged: (value) => setState(() => storage.automaticImageRouting = value),
+        ),
+        DropdownButtonFormField<String>(
+          value: storage.imageProvider,
+          decoration: const InputDecoration(
+            labelText: 'Image provider', border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 'wiro', child: Text('Wiro AI')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => storage.imageProvider = value);
+          },
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: storage.imageModel,
+          decoration: const InputDecoration(
+            labelText: 'Image model', border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 'seedream-v5-lite-uncensored',
+              child: Text('Seedream 5.0 Lite · \$0.035')),
+            DropdownMenuItem(value: 'seedream-v4-5-uncensored',
+              child: Text('Seedream 4.5 · \$0.04')),
+          ],
+          onChanged: (value) {
+            if (value != null) setState(() => storage.imageModel = value);
+          },
+        ),
+        const SizedBox(height: 16),
+        Text('Monthly image budget (USD)', style: TextStyle(color: context.text)),
+        Slider(
+          min: 0, max: 50, divisions: 50,
+          value: storage.monthlyImageBudget.clamp(0.0, 50.0).toDouble(),
+          activeColor: AppColors.accent,
+          label: storage.monthlyImageBudget == 0
+              ? 'No limit' : '${storage.monthlyImageBudget.toStringAsFixed(0)}',
+          onChanged: (v) => setState(() => storage.monthlyImageBudget = v),
+        ),
+        Text(storage.monthlyImageBudget == 0
+          ? 'No monthly limit · use caution'
+          : 'Estimated spending: ${storage.thisMonthImageSpend.toStringAsFixed(2)} / ${storage.monthlyImageBudget.toStringAsFixed(2)} this month',
+          style: TextStyle(color: context.textM, fontSize: 12)),
+        const SizedBox(height: 6),
+        Text('Local estimates only. Provider billing may differ, and failed or '
+          'cancelled jobs may still incur charges.',
+          style: TextStyle(color: context.textD, fontSize: 12)),
+      ]),
+    ));
+  }
+}
+
+class _VisionKeyCard extends StatefulWidget {
+  const _VisionKeyCard();
+  @override
+  State<_VisionKeyCard> createState() => _VisionKeyCardState();
+}
+
+class _VisionKeyCardState extends State<_VisionKeyCard> {
+  final _vision = VisionService();
+  final _endpoint = TextEditingController();
+  final _model = TextEditingController();
+  final _key = TextEditingController();
+  bool _configured = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+  Future<void> _refresh() async {
+    final result = await _vision.isConfigured;
+    if (mounted) setState(() => _configured = result);
+  }
+  @override
+  void dispose() {
+    _endpoint.dispose();
+    _model.dispose();
+    _key.dispose();
+    super.dispose();
+  }
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    try {
+      await _vision.configure(
+        endpoint: _endpoint.text, model: _model.text, apiKey: _key.text);
+      _key.clear();
+      await _refresh();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vision model configuration saved securely.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Vision setup failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Photo understanding (optional)',
+          style: TextStyle(color: context.text,
+            fontWeight: FontWeight.w600, fontSize: 15)),
+        const SizedBox(height: 6),
+        Text(_configured ? 'Vision model configured'
+          : 'Use an OpenAI-compatible image/vision model. DeepSeek stays your chat model.',
+          style: TextStyle(color: context.textM, fontSize: 12)),
+        const SizedBox(height: 12),
+        TextField(controller: _endpoint,
+          decoration: const InputDecoration(
+            labelText: 'HTTPS chat-completions URL', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _model,
+          decoration: const InputDecoration(
+            labelText: 'Vision model ID', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: _key, obscureText: true,
+          enableSuggestions: false, autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Vision API key', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        Wrap(spacing: 6, children: [
+          TextButton(onPressed: _busy ? null : _save,
+            child: const Text('Save vision model')),
+          TextButton(onPressed: _busy || !_configured ? null : () async {
+              await _vision.clear();
+              await _refresh();
+            }, child: const Text('Remove')),
+        ]),
+      ]),
+    ),
+  );
+}
+
+class _SystemPromptEditor extends StatefulWidget {
+  final ChatController chatCtrl;
+  const _SystemPromptEditor({required this.chatCtrl});
+
+  @override
+  State<_SystemPromptEditor> createState() => _SystemPromptEditorState();
+}
+
+class _SystemPromptEditorState extends State<_SystemPromptEditor> {
+  late final TextEditingController _controller;
+  Worker? _worker;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.chatCtrl.systemPrompt.value);
+    _worker = ever<String>(widget.chatCtrl.systemPrompt, (value) {
+      if (_controller.text == value) return;
+      _controller.value = TextEditingValue(
+        text: value,
+        selection: TextSelection.collapsed(offset: value.length),
+      );
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _worker?.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openFullEditor() async {
+    final draft = TextEditingController(text: _controller.text);
+    try {
+      final saved = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (editorContext) => Scaffold(
+            appBar: AppBar(
+              title: const Text('Global System Prompt'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(editorContext, draft.text),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Write or paste long instructions here. There is no '
+                      'app-imposed character limit; your model’s context '
+                      'window still applies.',
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: draft,
+                        expands: true,
+                        minLines: null,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        textAlignVertical: TextAlignVertical.top,
+                        style: TextStyle(
+                          fontSize: 15, height: 1.5, color: editorContext.text,
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Instructions for Mochi…',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.all(16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      if (saved != null && mounted) {
+        _controller.text = saved;
+        widget.chatCtrl.setGlobalSystemPrompt(saved);
+        setState(() {});
+      }
+    } finally {
+      draft.dispose();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TextField(
+        controller: _controller,
+        minLines: 8,
+        maxLines: 14,
+        keyboardType: TextInputType.multiline,
+        style: TextStyle(fontSize: 14, color: context.text, height: 1.5),
+        decoration: const InputDecoration(
+          labelText: 'Instructions for Mochi',
+          hintText: 'How would you like Mochi to respond?',
+          border: OutlineInputBorder(),
+          alignLabelWithHint: true,
+        ),
+        onChanged: (value) {
+          widget.chatCtrl.setGlobalSystemPrompt(value);
+          setState(() {});
+        },
+      ),
+      const SizedBox(height: 6),
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${_controller.text.length} characters',
+              style: TextStyle(fontSize: 12, color: context.textM),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _openFullEditor,
+            icon: const Icon(Icons.open_in_full_rounded, size: 18),
+            label: const Text('Full-screen editor'),
+          ),
+        ],
+      ),
+    ],
+  );
+}

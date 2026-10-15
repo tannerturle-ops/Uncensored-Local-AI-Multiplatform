@@ -1,14 +1,19 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 
 import '../theme/app_colors.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/model_controller.dart';
+import '../services/deepseek_service.dart';
 import '../controllers/theme_controller.dart';
 import '../services/llm_service.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/typing_indicator.dart';
+import '../models/message_model.dart';
 import 'model_library_screen.dart';
 import 'settings_screen.dart';
 
@@ -25,10 +30,16 @@ class _HomeScreenState extends State<HomeScreen> {
   final _llm = Get.find<LlmService>();
   final _themeCtrl = Get.find<ThemeController>();
   final _msgController = TextEditingController();
+  final _picker = ImagePicker();
+  Uint8List? _pendingPhoto;
+  String? _pendingMime;
+  String? _pendingPhotoName;
+  MessageModel? _selectedEditImage;
   final _scrollController = ScrollController();
   bool _sidebarOpen = true;
   bool _autoScrollToBottom = true;
   String? _lastRenderedChatId;
+  Worker? _chatRefreshWorker;
 
   // Mobile bottom nav index: 0=Chat, 1=Models, 2=Settings
   int _mobileTabIndex = 0;
@@ -40,20 +51,30 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_handleChatScroll);
+    _chatRefreshWorker = ever(_chatCtrl.chats, (_) => _scrollToBottom());
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_handleChatScroll);
+    _chatRefreshWorker?.dispose();
     _scrollController.dispose();
     _msgController.dispose();
     super.dispose();
   }
 
-  void _handleChatScroll() {
-    if (!_scrollController.hasClients) return;
-    _autoScrollToBottom = _isNearBottom();
+  // Only user-initiated scroll gestures may change follow mode.
+  // Programmatic jumps and streaming layout updates must not re-enable it.
+  bool _handleUserScroll(UserScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification.direction == ScrollDirection.forward) {
+      // User is scrolling toward older messages: stop following immediately.
+      _autoScrollToBottom = false;
+    } else if (notification.direction == ScrollDirection.reverse &&
+        _isNearBottom()) {
+      // Resume only when the user scrolls back near the newest reply.
+      _autoScrollToBottom = true;
+    }
+    return false;
   }
 
   bool _isNearBottom() {
@@ -68,30 +89,109 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         if (!force && !_autoScrollToBottom) return;
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
+        final bottom = _scrollController.position.maxScrollExtent;
+        if ((bottom - _scrollController.offset).abs() < 12) return;
+        if (force) {
+          _scrollController.jumpTo(bottom);
+        } else {
+          _scrollController.jumpTo(bottom);
+        }
       }
     });
   }
 
   void _send() {
     final text = _msgController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _pendingPhoto == null) return;
+    if (_chatCtrl.isGenerating.value) return;
+    final photo = _pendingPhoto;
+    final mime = _pendingMime;
+    final editSource = _selectedEditImage;
+    setState(() {
+      _selectedEditImage = null;
+      _pendingPhoto = null;
+      _pendingMime = null;
+      _pendingPhotoName = null;
+    });
 
     if (_chatCtrl.activeChat == null) {
       _chatCtrl.newChat();
     }
 
     _msgController.clear();
+    FocusManager.instance.primaryFocus?.unfocus();
     _autoScrollToBottom = true;
     _chatCtrl.sendMessage(
       text,
       modelFilename: _modelCtrl.selectedModelFilename.value,
+      imageBytes: photo,
+      imageMimeType: mime,
+      editSource: editSource,
     );
     _scrollToBottom(force: true);
+  }
+
+  Future<void> _attachPhoto(ImageSource source) async {
+    try {
+      final photo = await _picker.pickImage(
+        source: source, maxWidth: 2048, imageQuality: 88);
+      if (photo == null) return;
+      final bytes = await photo.readAsBytes();
+      if (bytes.length > 25 * 1024 * 1024) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image must be under 25 MB.')));
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _pendingPhoto = bytes;
+        _pendingPhotoName = photo.name;
+        final n = photo.name.toLowerCase();
+        _pendingMime = n.endsWith('.png') ? 'image/png'
+            : n.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+      });
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open photo: $error')));
+    }
+  }
+
+  Future<void> _showAttachmentActions() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Choose Photo'),
+            onTap: () {
+              Navigator.pop(sheet);
+              _attachPhoto(ImageSource.gallery);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_outlined),
+            title: const Text('Take Photo'),
+            onTap: () {
+              Navigator.pop(sheet);
+              _attachPhoto(ImageSource.camera);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_rounded),
+            title: const Text('Generate Image'),
+            onTap: () {
+              Navigator.pop(sheet);
+              _msgController.text = 'Generate an image of ';
+              _msgController.selection = TextSelection.collapsed(
+                offset: _msgController.text.length);
+            },
+          ),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -315,6 +415,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+              // Settings and downloaded models live in the drawer,
+              // leaving the chat screen full-height without a tab bar.
+              ListTile(
+                leading: Icon(Icons.widgets_outlined, color: context.textM),
+                title: Text('Models', style: TextStyle(color: context.text)),
+                onTap: () {
+                  Navigator.pop(context);
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  setState(() => _mobileTabIndex = 1);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.settings_outlined, color: context.textM),
+                title: Text('Settings', style: TextStyle(color: context.text)),
+                onTap: () {
+                  Navigator.pop(context);
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  setState(() => _mobileTabIndex = 2);
+                },
+              ),
+              Divider(height: 1, color: context.border),
               // Chat list
               Expanded(
                 child: ChatSidebar(
@@ -335,56 +456,43 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: SafeArea(
-        bottom: false, // let the bottom nav handle the safe area
-        child: IndexedStack(
-          index: _mobileTabIndex,
+        bottom: true,
+        child: Column(
           children: [
-            // Tab 0: Chat
-            _buildMobileChatTab(),
-            // Tab 1: Models
-            const ModelLibraryScreen(embedded: true),
-            // Tab 2: Settings
-            const SettingsScreen(embedded: true),
-          ],
-        ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: context.bg,
-          border: Border(top: BorderSide(color: context.border, width: 0.5)),
-        ),
-        child: NavigationBar(
-          selectedIndex: _mobileTabIndex,
-          onDestinationSelected: (i) => setState(() => _mobileTabIndex = i),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          indicatorColor: AppColors.accent.withOpacity(0.15),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          height: 64,
-          destinations: [
-            NavigationDestination(
-              icon: Icon(Icons.chat_outlined, color: context.textM),
-              selectedIcon: const Icon(
-                Icons.chat_rounded,
-                color: AppColors.accent,
+            if (_mobileTabIndex != 0)
+              Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: context.border, width: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: 'Back to chat',
+                      onPressed: () => setState(() => _mobileTabIndex = 0),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _mobileTabIndex == 1 ? 'Models' : 'Settings',
+                      style: TextStyle(
+                        color: context.text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              label: 'Chat',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.widgets_outlined, color: context.textM),
-              selectedIcon: const Icon(
-                Icons.widgets_rounded,
-                color: AppColors.accent,
+            Expanded(
+              child: IndexedStack(
+                index: _mobileTabIndex,
+                children: [
+                  _buildMobileChatTab(),
+                  const ModelLibraryScreen(embedded: true),
+                  const SettingsScreen(embedded: true),
+                ],
               ),
-              label: 'Models',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined, color: context.textM),
-              selectedIcon: const Icon(
-                Icons.settings_rounded,
-                color: AppColors.accent,
-              ),
-              label: 'Settings',
             ),
           ],
         ),
@@ -497,12 +605,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 final info = fname != null
                     ? _modelCtrl.getModelInfo(fname)
                     : null;
-                final loaded = _llm.isLoaded.value;
+                final loaded = DeepSeekService.isCloud(fname) || _llm.isLoaded.value;
                 final isLoading = _llm.isLoadingModel.value;
                 final label = isLoading
                     ? 'Loading...'
                     : loaded
-                    ? (info?.name ?? fname ?? 'Model')
+                    ? (DeepSeekService.isCloud(fname) ? 'DeepSeek: ${DeepSeekService.modelFromId(fname!)}' : (info?.name ?? fname ?? 'Model'))
                     : 'No model selected';
 
                 return GestureDetector(
@@ -564,12 +672,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showModelPicker(BuildContext context) {
     final downloaded = _modelCtrl.downloadedModels;
-    if (downloaded.isEmpty) {
-      // No models — nudge user to Models tab
-      setState(() => _mobileTabIndex = 1);
-      return;
-    }
-
     showModalBottomSheet(
       context: context,
       backgroundColor: context.bg,
@@ -643,6 +745,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 4),
+              // Cloud models; local models still appear below.
+              ...[DeepSeekService.chatId, DeepSeekService.reasonerId].map((id) => ListTile(
+                dense: true,
+                leading: const Icon(Icons.cloud_outlined, color: AppColors.accent),
+                title: Text('DeepSeek: ${DeepSeekService.modelFromId(id)}',
+                  style: TextStyle(color: context.text)),
+                trailing: _modelCtrl.selectedModelFilename.value == id
+                  ? const Icon(Icons.check_rounded, color: AppColors.green)
+                  : null,
+                onTap: () {
+                  _modelCtrl.selectCloudModel(id);
+                  Navigator.pop(context);
+                },
+              )),
               // Model list
               ...downloaded.map((filename) {
                 final info = _modelCtrl.getModelInfo(filename);
@@ -809,7 +925,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final fname = _modelCtrl.selectedModelFilename.value;
             final info = fname != null ? _modelCtrl.getModelInfo(fname) : null;
             return InkWell(
-              onTap: () => Get.toNamed('/models'),
+              onTap: () => _showModelPicker(context),
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -824,7 +940,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      info?.name ?? (fname ?? 'Select Model'),
+                      DeepSeekService.isCloud(fname) ? 'DeepSeek: ${DeepSeekService.modelFromId(fname!)}' : (info?.name ?? (fname ?? 'Select Model')),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -961,29 +1077,53 @@ class _HomeScreenState extends State<HomeScreen> {
               _scrollToBottom(force: true);
             }
 
-            _scrollToBottom();
-
-            return ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              itemCount:
-                  chat.messages.length + (_chatCtrl.isGenerating.value ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index < chat.messages.length) {
-                  final msg = chat.messages[index];
-                  // Show speed on the last AI message
+            return NotificationListener<UserScrollNotification>(
+              onNotification: _handleUserScroll,
+              child: ListView.builder(
+                controller: _scrollController,
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                itemCount: chat.messages.length + (_chatCtrl.isGenerating.value &&
+                    _chatCtrl.imageStatus.value.isNotEmpty ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == chat.messages.length) {
+                  return TypingIndicator(label: _chatCtrl.imageStatus.value);
+                }
+                final msg = chat.messages[index];
                   final isLastAi =
                       msg.isAssistant && index == chat.messages.length - 1;
-                  return ChatBubble(message: msg, showSpeed: isLastAi);
-                }
-                return const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: TypingIndicator(),
-                  ),
-                );
-              },
+                  // Thinking is outside the message bubble until text arrives.
+                  if (isLastAi &&
+                      _chatCtrl.isGenerating.value &&
+                      msg.content.isEmpty) {
+                    return const Align(
+                      alignment: Alignment.centerLeft,
+                      child: TypingIndicator(),
+                    );
+                  }
+                  return ChatBubble(
+                    message: msg,
+                    showSpeed: isLastAi,
+                    onEditImage: msg.imageLocalPath != null || msg.imageBase64 != null
+                      ? () {
+                          setState(() => _selectedEditImage = msg);
+                          _msgController.text = '';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Image selected. Describe what to change.')));
+                        }
+                      : null,
+                    onRetryImage: msg.isAssistant &&
+                        (msg.imageLocalPath != null || msg.imageBase64 != null)
+                      ? () {
+                          final prompt = msg.imagePrompt ?? '';
+                          if (prompt.trim().isEmpty) return;
+                          _msgController.text = prompt;
+                          _send();
+                        }
+                      : null,
+                  );
+                },
+              ),
             );
           }),
         ),
@@ -1025,7 +1165,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 8),
             Obx(
               () => Text(
-                _llm.isLoaded.value
+                (DeepSeekService.isCloud(_modelCtrl.selectedModelFilename.value) ||
+                    _llm.isLoaded.value)
                     ? 'Type a message below to get started.'
                     : 'Select a model first to begin chatting.',
                 style: TextStyle(fontSize: 14, color: context.textM),
@@ -1039,70 +1180,97 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.bgInput,
-          border: Border.all(color: context.border),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(context.isDark ? 0.15 : 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_selectedEditImage != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              const Icon(Icons.edit_outlined, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Editing selected image')),
+              IconButton(
+                onPressed: () => setState(() => _selectedEditImage = null),
+                icon: const Icon(Icons.close_rounded), tooltip: 'Cancel edit'),
+            ]),
+          ),
+        if (_pendingPhoto != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8, left: 8),
+              child: Stack(children: [
+                ClipRRect(borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(_pendingPhoto!, width: 90, height: 90,
+                    fit: BoxFit.cover)),
+                Positioned(top: 0, right: 0,
+                  child: IconButton(
+                    onPressed: () => setState(() {
+                      _pendingPhoto = null;
+                      _pendingMime = null;
+                      _pendingPhotoName = null;
+                    }),
+                    icon: const Icon(Icons.cancel_rounded),
+                    tooltip: 'Remove photo',
+                  )),
+              ]),
             ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Text field
-            Expanded(
-              child: TextField(
-                controller: _msgController,
-                maxLines: 5,
-                minLines: 1,
-                textInputAction: TextInputAction.newline,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: context.text,
-                  height: 1.4,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Ask anything...',
-                  hintStyle: TextStyle(color: context.textD),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.fromLTRB(24, 14, 8, 14),
-                ),
-                onSubmitted: (_) => _send(),
+          ),
+        Container(
+          decoration: BoxDecoration(
+            color: context.bgInput,
+            border: Border.all(color: context.border, width: 1),
+            borderRadius: BorderRadius.circular(36),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12),
+              blurRadius: 15, offset: const Offset(0, 5))],
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Padding(padding: const EdgeInsets.only(left: 5, bottom: 4),
+              child: IconButton(
+                onPressed: _showAttachmentActions,
+                tooltip: 'Add photo or create image',
+                icon: Icon(Icons.add_rounded, size: 29, color: context.text))),
+            Expanded(child: TextField(
+              controller: _msgController,
+              minLines: 1, maxLines: 5,
+              textInputAction: TextInputAction.newline,
+              onChanged: (_) => setState(() {}),
+              style: TextStyle(fontSize: 15, height: 1.4, color: context.text),
+              decoration: InputDecoration(
+                hintText: 'Ask Mochi…',
+                hintStyle: TextStyle(color: context.textD),
+                border: InputBorder.none, enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 3, vertical: 17),
               ),
-            ),
-
-            // Send / Stop
-            Padding(
-              padding: const EdgeInsets.only(right: 8, bottom: 6),
-              child: Obx(
-                () => _chatCtrl.isGenerating.value
-                    ? _circleButton(
-                        icon: Icons.stop_rounded,
-                        color: AppColors.red,
-                        onTap: _chatCtrl.stopGeneration,
-                        tooltip: 'Stop',
-                      )
-                    : _circleButton(
-                        icon: Icons.arrow_upward_rounded,
-                        color: AppColors.accent,
-                        onTap: _send,
-                        tooltip: 'Send',
-                      ),
+              onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            )),
+            if (MediaQuery.viewInsetsOf(context).bottom > 0)
+              IconButton(
+                tooltip: 'Hide keyboard',
+                icon: Icon(Icons.keyboard_hide_rounded, size: 20, color: context.textM),
+                onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
               ),
-            ),
-          ],
+            Padding(padding: const EdgeInsets.only(bottom: 5),
+              child: IconButton(
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Voice recording is coming in a future update.'))),
+                tooltip: 'Microphone (coming soon)',
+                icon: Icon(Icons.mic_none_rounded, color: context.textM, size: 23),
+              )),
+            Padding(padding: const EdgeInsets.only(right: 6, bottom: 6),
+              child: Obx(() => _chatCtrl.isGenerating.value
+                  ? _circleButton(
+                      icon: Icons.stop_rounded, color: AppColors.red,
+                      onTap: _chatCtrl.stopGeneration, tooltip: 'Stop')
+                  : _circleButton(
+                      icon: Icons.arrow_upward_rounded, color: AppColors.accent,
+                      onTap: _send, tooltip: 'Send'))),
+          ]),
         ),
-      ),
+      ]),
     );
   }
 

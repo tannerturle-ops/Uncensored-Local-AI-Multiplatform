@@ -22,13 +22,18 @@ class MessageModelAdapter extends TypeAdapter<MessageModel> {
       timestamp: fields[2] as DateTime?,
       imageBase64: fields[3] as String?,
       imageMimeType: fields[4] as String?,
+      imageLocalPath: fields[5] as String?,
+      imageId: fields[6] as String?,
+      sourceImageId: fields[7] as String?,
+      imageProvider: fields[8] as String?,
+      imagePrompt: fields[9] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, MessageModel obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.role)
       ..writeByte(1)
@@ -38,7 +43,17 @@ class MessageModelAdapter extends TypeAdapter<MessageModel> {
       ..writeByte(3)
       ..write(obj.imageBase64)
       ..writeByte(4)
-      ..write(obj.imageMimeType);
+      ..write(obj.imageMimeType)
+      ..writeByte(5)
+      ..write(obj.imageLocalPath)
+      ..writeByte(6)
+      ..write(obj.imageId)
+      ..writeByte(7)
+      ..write(obj.sourceImageId)
+      ..writeByte(8)
+      ..write(obj.imageProvider)
+      ..writeByte(9)
+      ..write(obj.imagePrompt);
   }
 
   @override
