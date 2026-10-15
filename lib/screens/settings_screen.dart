@@ -1340,9 +1340,9 @@ class _ImageOptionsCardState extends State<_ImageOptionsCard> {
             labelText: 'Image model', border: OutlineInputBorder()),
           items: const [
             DropdownMenuItem(value: 'seedream-v5-lite-uncensored',
-              child: Text('Seedream 5.0 Lite · $0.035')),
+              child: Text('Seedream 5.0 Lite · \$0.035')),
             DropdownMenuItem(value: 'seedream-v4-5-uncensored',
-              child: Text('Seedream 4.5 · $0.04')),
+              child: Text('Seedream 4.5 · \$0.04')),
           ],
           onChanged: (value) {
             if (value != null) setState(() => storage.imageModel = value);
