@@ -1467,6 +1467,7 @@ class _SystemPromptEditor extends StatefulWidget {
 class _SystemPromptEditorState extends State<_SystemPromptEditor> {
   late final TextEditingController _controller;
   Worker? _worker;
+
   @override
   void initState() {
     super.initState();
@@ -1477,6 +1478,7 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
         text: value,
         selection: TextSelection.collapsed(offset: value.length),
       );
+      if (mounted) setState(() {});
     });
   }
 
@@ -1487,16 +1489,106 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
     super.dispose();
   }
 
+  Future<void> _openFullEditor() async {
+    final draft = TextEditingController(text: _controller.text);
+    try {
+      final saved = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (editorContext) => Scaffold(
+            appBar: AppBar(
+              title: const Text('Global System Prompt'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(editorContext, draft.text),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Write or paste long instructions here. There is no '
+                      'app-imposed character limit; your model’s context '
+                      'window still applies.',
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: draft,
+                        expands: true,
+                        minLines: null,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        textAlignVertical: TextAlignVertical.top,
+                        style: TextStyle(
+                          fontSize: 15, height: 1.5, color: editorContext.text,
+                        ),
+                        decoration: const InputDecoration(
+                          hintText: 'Instructions for Mochi…',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.all(16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      if (saved != null && mounted) {
+        _controller.text = saved;
+        widget.chatCtrl.setGlobalSystemPrompt(saved);
+        setState(() {});
+      }
+    } finally {
+      draft.dispose();
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => TextField(
-    controller: _controller,
-    maxLines: 4,
-    style: TextStyle(fontSize: 14, color: context.text, height: 1.5),
-    decoration: const InputDecoration(
-      labelText: 'Instructions for Mochi',
-      hintText: 'How would you like Mochi to respond?',
-      border: OutlineInputBorder(),
-    ),
-    onChanged: widget.chatCtrl.setGlobalSystemPrompt,
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TextField(
+        controller: _controller,
+        minLines: 8,
+        maxLines: 14,
+        keyboardType: TextInputType.multiline,
+        style: TextStyle(fontSize: 14, color: context.text, height: 1.5),
+        decoration: const InputDecoration(
+          labelText: 'Instructions for Mochi',
+          hintText: 'How would you like Mochi to respond?',
+          border: OutlineInputBorder(),
+          alignLabelWithHint: true,
+        ),
+        onChanged: (value) {
+          widget.chatCtrl.setGlobalSystemPrompt(value);
+          setState(() {});
+        },
+      ),
+      const SizedBox(height: 6),
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${_controller.text.characters.length} characters',
+              style: TextStyle(fontSize: 12, color: context.textM),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _openFullEditor,
+            icon: const Icon(Icons.open_in_full_rounded, size: 18),
+            label: const Text('Full-screen editor'),
+          ),
+        ],
+      ),
+    ],
   );
 }
