@@ -66,6 +66,13 @@ class ChatStorageService extends GetxService {
   set globalSystemPrompt(String value) =>
       _settingsBox.put('global_system_prompt', value);
 
+  // DeepSeek reasoning can be controlled independently of the model.
+  // DeepSeek's default is High; keep it available unless the user opts out.
+  String get deepseekReasoningEffort =>
+      _settingsBox.get('deepseek_reasoning_effort', defaultValue: 'high') as String;
+  set deepseekReasoningEffort(String value) =>
+      _settingsBox.put('deepseek_reasoning_effort', value);
+
   double get defaultTemperature =>
       (_settingsBox.get('temperature', defaultValue: 0.7) as num).toDouble();
 
